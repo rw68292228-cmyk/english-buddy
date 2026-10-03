@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>English Buddy</title>
+  <meta name="description" content="每日 10 分鐘英文傾偈陪練">
+  <meta name="theme-color" content="#4f46e5">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="English Buddy">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <header>
+    <h1>🗣️ English Buddy</h1>
+    <div id="dash" class="card dash"></div>
+    <nav class="tabs">
+      <button type="button" data-tab="practice" class="active">☕ 今日練習</button>
+      <button type="button" data-tab="records">📒 我的紀錄</button>
+      <button type="button" data-tab="settings">⚙️ 設定</button>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ===== 今日練習 ===== -->
+    <section id="tab-practice" class="tab">
+      <div id="home">
+        <button type="button" id="start-btn" class="btn primary big">▶️ 開始今日 10 分鐘傾偈</button>
+        <p class="hint center">Buddy 會揀今日話題同你用英文傾偈。<br>傾嘅時候唔會打斷你改錯，傾完先總結。</p>
+      </div>
+
+      <div id="chat" hidden>
+        <div class="topic-bar"><span id="topic"></span><span id="timer"></span></div>
+        <div id="messages" class="messages"></div>
+        <div class="mic-area">
+          <button type="button" id="mic-btn" class="mic" aria-label="錄音">🎤</button>
+          <p id="mic-label" class="mic-label">撳一下開始講</p>
+        </div>
+        <label class="toggle"><input type="checkbox" id="tips-toggle"> 💡 每句顯示改正提示</label>
+        <details class="type-box">
+          <summary>⌨️ 唔方便出聲？改用打字</summary>
+          <form id="text-form" class="row">
+            <input id="text-input" placeholder="Type in English…" autocomplete="off" enterkeyhint="send">
+            <button class="btn">送出</button>
+          </form>
+        </details>
+        <button type="button" id="end-btn" class="btn danger">🏁 結束並總結</button>
+      </div>
+
+      <div id="summary" hidden>
+        <div id="summary-body" class="card"></div>
+        <div class="card">
+          <h3>🔁 跟讀練習（檢查發音）</h3>
+          <div id="phrase"></div>
+          <div class="row">
+            <button type="button" id="play-btn" class="btn">🔊 聽示範</button>
+            <button type="button" id="shadow-btn" class="btn primary">🎤 跟住讀</button>
+          </div>
+          <div id="shadow-result"></div>
+          <button type="button" id="next-btn" class="btn">➡️ 下一句</button>
+        </div>
+        <button type="button" id="again-btn" class="btn">▶️ 再傾一次</button>
+      </div>
+    </section>
+
+    <!-- ===== 我的紀錄 ===== -->
+    <section id="tab-records" class="tab" hidden>
+      <div class="card">
+        <h3>🧠 Buddy 記得你嘅嘢</h3>
+        <p class="hint">一行一項，可以自己加減。Buddy 會按呢啲出題同傾偈。</p>
+        <textarea id="profile" rows="7" placeholder="例如：I work as a nurse in Kowloon."></textarea>
+        <button type="button" id="profile-save" class="btn">💾 儲存</button>
+      </div>
+      <div class="card"><h3>🗓️ 最近練習</h3><ul id="history"></ul></div>
+      <div class="card"><h3>💬 學過嘅句子</h3><ul id="learned"></ul></div>
+      <div class="card">
+        <h3>💾 備份</h3>
+        <p class="hint">紀錄只會存喺呢部機。換手機或者清除瀏覽器資料之前，記得先匯出。</p>
+        <div class="row">
+          <button type="button" id="export-btn" class="btn">⬇️ 匯出</button>
+          <label class="btn">⬆️ 匯入<input type="file" id="import-file" accept="application/json,.json" hidden></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== 設定 ===== -->
+    <section id="tab-settings" class="tab" hidden>
+      <div class="card">
+        <h3>🔑 Groq API key</h3>
+        <p class="hint">
+          喺 <a href="https://console.groq.com/keys" target="_blank" rel="noopener">console.groq.com/keys</a> 免費開一個。
+          只會存喺呢部機，只會用嚟直接連去 Groq。
+        </p>
+        <input type="password" id="api-key" placeholder="gsk_..." autocomplete="off" spellcheck="false">
+
+        <h3>🔊 朗讀聲線</h3>
+        <label>朗讀引擎
+          <select id="tts-engine">
+            <option value="browser">瀏覽器內置（免費、反應最快）</option>
+            <option value="orpheus">Groq Orpheus（更有感情，用 Groq 額度）</option>
+          </select>
+        </label>
+        <div id="browser-voice-opts">
+          <p class="hint">「自動揀」會揀最溫柔自然嘅女聲。電腦用 Edge 瀏覽器會有更自然嘅聲線（例如 Ava、Jenny）。</p>
+          <select id="voice"></select>
+        </div>
+        <div id="orpheus-opts" hidden>
+          <p class="hint">Orpheus 係 AI 真人感聲線。用唔到嘅時候會自動改用瀏覽器聲音。</p>
+          <label>聲線<select id="orpheus-voice"></select></label>
+          <label>語氣
+            <select id="tts-style">
+              <option value="gentle">溫柔 gentle</option>
+              <option value="warm">溫暖 warm</option>
+              <option value="calm">平靜 calm</option>
+              <option value="cheerful">開心 cheerful</option>
+              <option value="">自然（唔加語氣）</option>
+            </select>
+          </label>
+        </div>
+        <label class="row slider">語速 <input type="range" id="rate" min="0.6" max="1.2" step="0.05"> <span id="rate-val"></span></label>
+        <button type="button" id="voice-test" class="btn">▶️ 試聽</button>
+
+        <h3>💡 每句提示</h3>
+        <label class="toggle"><input type="checkbox" id="tips-default"> 預設開啟（AI 用量約多一倍）</label>
+
+        <details>
+          <summary>進階</summary>
+          <label>對話模型<input id="model" spellcheck="false"></label>
+        </details>
+
+        <button type="button" id="settings-save" class="btn primary">💾 儲存設定</button>
+      </div>
+
+      <div class="card">
+        <h3>🧪 測試</h3>
+        <p class="hint">輸入 API key 之後，逐個撳嚟確認一切正常（未儲存都可以測）。</p>
+        <button type="button" id="test-key" class="btn">1️⃣ 測試 API key</button>
+        <button type="button" id="test-mic" class="btn">2️⃣ 測試咪同語音辨識</button>
+        <button type="button" id="test-voice" class="btn">3️⃣ 測試朗讀</button>
+        <div id="test-result" class="test-result"></div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" hidden></div>
+</body>
+</html>

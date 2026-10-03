@@ -1,0 +1,10 @@
+{
+  "name": "English Buddy",
+  "short_name": "English Buddy",
+  "description": "每日 10 分鐘英文傾偈陪練",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f7fb",
+  "theme_color": "#4f46e5",
+  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+}
