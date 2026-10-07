@@ -25,7 +25,10 @@ function addDays(iso, n) {
   return d.toISOString().slice(0, 10);
 }
 
-export const empty = () => ({ profile: [], sessions: [], phrases: [] });
+const REVIEW_SIZE = 3;
+
+// review：留俾下次練習熱身嘅句子 { date, items: [{ en, zh, gap }], reviewedOn }
+export const empty = () => ({ profile: [], sessions: [], phrases: [], review: null });
 
 export function load() {
   try {
@@ -61,6 +64,26 @@ export function addSession(data, topic, minutes, turns, facts, phrases) {
 
   data.phrases.push(...phrases.map((p) => ({ en: p.en, zh: p.zh || "", date })));
   data.phrases = data.phrases.slice(-MAX_PHRASES);
+}
+
+// 留低今日最值得複習嘅 3 句：「講唔出」嘅優先，其次係實用句子；同一日練多次就合併
+export function setReview(data, items) {
+  const date = todayHK();
+  const old = data.review?.date === date ? data.review.items : [];
+  const all = [...items, ...old].filter((i) => i?.en);
+  const seen = new Set();
+  const picked = [...all.filter((i) => i.gap), ...all.filter((i) => !i.gap)].filter((i) => {
+    const k = i.en.toLowerCase();
+    return !seen.has(k) && seen.add(k);
+  });
+  data.review = { date, items: picked.slice(0, REVIEW_SIZE) };
+}
+
+// 有未熱身嘅舊句子就回傳，否則 null
+export function pendingReview(data) {
+  const r = data.review;
+  if (!r?.items?.length || r.date >= todayHK() || r.reviewedOn === todayHK()) return null;
+  return r;
 }
 
 const dates = (data) => new Set(data.sessions.map((s) => s.date));

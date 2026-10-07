@@ -1,8 +1,8 @@
-// English Buddy 主程式：每日 10 分鐘傾偈 → 總結 → 跟讀 → 打卡。
+// English Buddy 主程式：熱身複習 → 每日 10 分鐘傾偈（🆘 記低講唔出）→ 總結 → 跟讀 → 打卡。
 
 import * as ai from "./ai.js";
 import * as store from "./store.js";
-import { chatSystemPrompt, parseJson, summaryPrompt, tipPrompt, topicPrompt } from "./prompts.js";
+import { chatSystemPrompt, parseJson, suggestPrompt, summaryPrompt, tipPrompt, topicPrompt } from "./prompts.js";
 import { compareWords } from "./shadowing.js";
 
 const SESSION_MINUTES = 10;
@@ -112,6 +112,75 @@ function setMic(state) {
   $("mic-label").textContent = { rec: "講完撳一下送出", busy: "Buddy 諗緊…", idle: "撳一下開始講" }[state];
 }
 
+// ===== 揀話題 =====
+// 現成話題：唔使用 AI 額度；en 會交俾 AI 出題
+const PRESET_TOPICS = [
+  { zh: "☕ 日常生活", en: "daily life and routines" },
+  { zh: "✈️ 旅遊", en: "travel experiences and dream trips" },
+  { zh: "🍜 美食", en: "food, restaurants and cooking" },
+  { zh: "💼 工作", en: "work and career" },
+  { zh: "🎬 電影劇集", en: "movies and TV shows" },
+  { zh: "🎵 音樂", en: "music" },
+  { zh: "🛍️ 購物", en: "shopping" },
+  { zh: "🏃 運動健康", en: "sports, exercise and health" },
+  { zh: "👨‍👩‍👧 家人朋友", en: "family and friends" },
+  { zh: "🏙️ 香港生活", en: "life in Hong Kong" },
+  { zh: "🛫 機場酒店（角色扮演）", en: "role-play: checking in at an airport and a hotel abroad" },
+  { zh: "🍽️ 餐廳點餐（角色扮演）", en: "role-play: ordering food at a restaurant abroad" },
+  { zh: "👔 求職面試（角色扮演）", en: "role-play: a job interview in English" },
+];
+const RANDOM_TOPIC = { zh: "🎲 Buddy 揀", en: null };
+
+let chosenTopic = RANDOM_TOPIC; // 而家揀緊的話題
+let suggestedTopics = []; // ✨ Buddy 建議的話題
+
+function renderChips() {
+  const custom = $("custom-topic").value.trim();
+  const chips = [RANDOM_TOPIC, ...suggestedTopics, ...PRESET_TOPICS];
+  const box = $("topic-chips");
+  box.innerHTML = "";
+  for (const t of chips) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    if (suggestedTopics.includes(t)) b.classList.add("suggested");
+    if (!custom && t === chosenTopic) b.classList.add("active");
+    b.textContent = t.zh;
+    b.addEventListener("click", () => {
+      chosenTopic = t;
+      $("custom-topic").value = "";
+      renderChips();
+    });
+    box.appendChild(b);
+  }
+}
+
+async function suggestTopics() {
+  if (busy || !requireKey()) return;
+  const btn = $("suggest-btn");
+  btn.disabled = true;
+  btn.textContent = "⏳ Buddy 諗緊…";
+  try {
+    const data = store.load();
+    const recent = data.sessions.slice(-10).map((s) => s.topic);
+    const raw = await ai.chat(settings, [{ role: "user", content: suggestPrompt(data.profile, recent) }], {
+      maxTokens: 250,
+      temperature: 1,
+    });
+    const topics = (parseJson(raw)?.topics || []).filter((t) => t?.topic).slice(0, 3);
+    if (!topics.length) throw new Error("Buddy 諗唔到，再撳一次？");
+    suggestedTopics = topics.map((t) => ({ zh: `✨ ${t.topic_zh || t.topic}`, en: t.topic }));
+    chosenTopic = suggestedTopics[0];
+    $("custom-topic").value = "";
+    renderChips();
+  } catch (e) {
+    toast(friendlyError(e));
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "✨ 換一批 Buddy 建議";
+  }
+}
+
 // ===== 傾偈 =====
 async function startSession() {
   if (busy || !requireKey()) return;
@@ -120,12 +189,16 @@ async function startSession() {
   const btn = $("start-btn");
   btn.disabled = true;
   btn.textContent = "⏳ 準備緊今日話題…";
+  // 自己打的話題優先，其次係揀咗的話題；Buddy 揀就係 null
+  const custom = $("custom-topic").value.trim();
+  const requested = custom || chosenTopic.en;
+  const requestedLabel = custom || chosenTopic.zh.replace(/^\S+\s/, "");
   try {
     const data = store.load();
     const recent = data.sessions.slice(-7).map((s) => s.topic);
     let j = {};
     try {
-      const raw = await ai.chat(settings, [{ role: "user", content: topicPrompt(data.profile, recent) }], {
+      const raw = await ai.chat(settings, [{ role: "user", content: topicPrompt(data.profile, recent, requested) }], {
         maxTokens: 200,
         temperature: 0.9,
       });
@@ -134,15 +207,21 @@ async function startSession() {
       if (/^(401|429)/.test(e.message)) throw e;
       console.warn("出題失敗", e);
     }
-    const opener = j.opener || "Hey, good to see you! Got any fun plans for the weekend?";
+    const opener =
+      j.opener ||
+      (requested
+        ? "Hey, good to see you! I heard you want to chat about this today. Tell me a little about it!"
+        : "Hey, good to see you! Got any fun plans for the weekend?");
     sess = {
       start: Date.now(),
-      topic: j.topic || "Plans for the weekend",
+      topic: j.topic || requested || "Plans for the weekend",
       profile: data.profile,
       messages: [{ role: "assistant", content: opener }],
       userTurns: 0,
+      gaps: [], // 🆘 講唔出嘅位
     };
-    $("topic").textContent = `今日話題：${j.topic_zh || "週末計劃"}`;
+    $("gap-box").hidden = true;
+    $("topic").textContent = `今日話題：${j.topic_zh || (requested ? requestedLabel : "週末計劃")}`;
     $("messages").innerHTML = "";
     $("tips-toggle").checked = settings.showTips;
     setMic("idle");
@@ -239,12 +318,42 @@ async function sendText(e) {
   }
 }
 
+// ===== 講唔出 =====
+// 只係記低，唔使 AI、唔打斷對話；總結先教點講
+function toggleGapBox() {
+  const box = $("gap-box");
+  box.hidden = !box.hidden;
+  if (!box.hidden) $("gap-input").focus();
+}
+
+function saveGap(e) {
+  e.preventDefault();
+  const input = $("gap-input");
+  const zh = input.value.trim();
+  if (!zh || !sess) return;
+  sess.gaps.push({ zh, context: sess.messages.at(-1)?.content || "" });
+  addBubble("gap", `🆘 記低咗：${esc(zh)}`);
+  input.value = "";
+  $("gap-box").hidden = true;
+  toast("✅ 記低咗，總結會教你點講。繼續傾，試下兜路講！");
+}
+
 // ===== 總結 =====
-function summaryHtml(j, raw, newBadges) {
+function summaryHtml(j, raw, newBadges, gaps) {
   if (!j) return `<h2>🎉 今日總結</h2><p>${esc(raw)}</p>`;
   const parts = [`<h2>🎉 今日總結</h2>`, `<p>👏 ${esc(j.praise || "做得好！")}</p>`];
   if (newBadges.length) parts.push(`<p>🎖️ <b>新徽章：</b>${esc(newBadges.join(" "))}</p>`);
   const list = (items, fn) => `<ul>${items.map(fn).join("")}</ul>`;
+  if (gaps.length) {
+    parts.push(`<h3>🧩 你想講但講唔出嘅嘢</h3>`);
+    parts.push(
+      list(
+        gaps,
+        (g) => `<li>${esc(g.zh)}<br>✅ <b>${esc(g.en)}</b>${g.simple ? `<br>🪜 簡單啲：${esc(g.simple)}` : ""}</li>`
+      )
+    );
+    parts.push(`<p class="hint">下面跟讀會由呢幾句開始，每句大聲講 3 次 💪</p>`);
+  }
   if (j.corrections?.length) {
     parts.push(`<h3>✍️ 可以講得更好</h3>`);
     parts.push(
@@ -277,21 +386,25 @@ async function finish() {
     const transcript = sess.messages
       .map((m) => `${m.role === "user" ? "Learner" : "Buddy"}: ${m.content}`)
       .join("\n");
-    const raw = await ai.chat(settings, [{ role: "user", content: summaryPrompt(transcript) }], {
-      maxTokens: 1200,
+    const raw = await ai.chat(settings, [{ role: "user", content: summaryPrompt(transcript, sess.gaps) }], {
+      maxTokens: 1200 + 120 * sess.gaps.length,
       temperature: 0.3,
     });
     const j = parseJson(raw);
-    phrases = (j?.phrases || []).filter((p) => p && p.en);
+    const gaps = sess.gaps.length ? (j?.gaps || []).filter((g) => g && g.en) : [];
+    const daily = (j?.phrases || []).filter((p) => p && p.en);
+    // 講唔出嘅句子排頭，跟讀同熱身都優先練
+    phrases = [...gaps.map((g) => ({ en: g.en, zh: g.zh || "", gap: true })), ...daily];
     pidx = 0;
 
     const data = store.load();
     const before = new Set(store.earnedBadges(data));
     store.addSession(data, sess.topic, minutes(), sess.userTurns, j?.new_facts || [], phrases);
+    store.setReview(data, phrases.map((p) => ({ en: p.en, zh: p.zh || "", gap: !!p.gap })));
     store.save(data);
     const newBadges = store.earnedBadges(data).filter((b) => !before.has(b));
 
-    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges);
+    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps);
     renderPhrase();
     sess = null;
     renderDash();
@@ -315,17 +428,17 @@ function renderPhrase() {
   }
   const p = phrases[pidx];
   $("phrase").innerHTML =
-    `<p class="hint">第 ${pidx + 1}/${phrases.length} 句</p><p class="phrase-en">${esc(p.en)}</p><p>${esc(p.zh)}</p>`;
+    `<p class="hint">第 ${pidx + 1}/${phrases.length} 句${p.gap ? " · 🧩 你講唔出嗰句" : ""}</p>` +
+    `<p class="phrase-en">${esc(p.en)}</p><p>${esc(p.zh)}</p>`;
 }
 
-async function toggleShadow() {
-  if (!phrases.length) return;
-  const btn = $("shadow-btn");
+// 錄音掣：撳第一下開始錄，第二下停止、辨識，再交俾 onText
+async function recordAndTranscribe(btn, idleLabel, onText) {
   if (!recorder) {
     ai.stopSpeaking();
     try {
       recorder = await ai.startRecording();
-      btn.textContent = "⏹️ 讀完撳一下";
+      btn.textContent = "⏹️ 講完撳一下";
       btn.classList.add("recording");
     } catch (e) {
       recorder = null;
@@ -339,18 +452,82 @@ async function toggleShadow() {
   btn.textContent = "⏳ 分析緊…";
   btn.disabled = true;
   try {
-    const said = await ai.transcribe(settings.apiKey, await rec.stop());
-    const r = compareWords(phrases[pidx].en, said);
-    $("shadow-result").innerHTML =
-      `<h3>🎯 準確度 ${r.score}%</h3><p class="marked">${r.html}</p>` +
-      `<p class="hint">辨識到：${esc(said)}</p>` +
-      `<p>${r.missed.length ? "標示咗嘅字可能讀得唔清楚，撳「聽示範」再跟讀一次 💪" : "完美！🎉"}</p>`;
+    onText(await ai.transcribe(settings.apiKey, await rec.stop()));
   } catch (e) {
     toast(friendlyError(e));
   } finally {
     btn.disabled = false;
-    btn.textContent = "🎤 跟住讀";
+    btn.textContent = idleLabel;
   }
+}
+
+function resultHtml(target, said) {
+  const r = compareWords(target, said);
+  return {
+    r,
+    html:
+      `<h3>🎯 準確度 ${r.score}%</h3><p class="marked">${r.html}</p>` + `<p class="hint">辨識到：${esc(said)}</p>`,
+  };
+}
+
+function toggleShadow() {
+  if (!phrases.length) return;
+  recordAndTranscribe($("shadow-btn"), "🎤 跟住讀", (said) => {
+    const { r, html } = resultHtml(phrases[pidx].en, said);
+    $("shadow-result").innerHTML =
+      html + `<p>${r.missed.length ? "標示咗嘅字可能讀得唔清楚，撳「聽示範」再跟讀一次 💪" : "完美！🎉"}</p>`;
+  });
+}
+
+// ===== 熱身複習：睇中文，用英文講返上次學嘅句子 =====
+let reviewItems = null; // 進行中的熱身；null＝未開始或者冇嘢要溫
+let ridx = 0;
+
+function initReview() {
+  const r = store.pendingReview(store.load());
+  reviewItems = r ? r.items : null;
+  ridx = 0;
+  renderReview();
+}
+
+function renderReview() {
+  $("review").hidden = !reviewItems;
+  if (!reviewItems) return;
+  const item = reviewItems[ridx];
+  $("review-item").innerHTML =
+    `<p class="hint">第 ${ridx + 1}/${reviewItems.length} 句 · 睇住中文，用英文講出嚟${item.gap ? " · 🧩 你上次講唔出嗰句" : ""}</p>` +
+    `<p class="phrase-en">${esc(item.zh || "（冇中文提示）")}</p>`;
+  $("review-result").innerHTML = "";
+  $("review-next").textContent = ridx + 1 < reviewItems.length ? "➡️ 下一句" : "✅ 熱身完成";
+}
+
+function revealAnswer(extra = "") {
+  const item = reviewItems[ridx];
+  $("review-result").innerHTML = `${extra}<p>✅ <b>${esc(item.en)}</b></p>`;
+  say(item.en);
+}
+
+function reviewSay() {
+  if (!reviewItems || !requireKey()) return;
+  ai.unlockSpeech();
+  recordAndTranscribe($("review-say"), "🎤 用英文講出嚟", (said) => {
+    revealAnswer(resultHtml(reviewItems[ridx].en, said).html);
+  });
+}
+
+function reviewNext() {
+  if (!reviewItems) return;
+  if (ridx + 1 < reviewItems.length) {
+    ridx++;
+    renderReview();
+    return;
+  }
+  const data = store.load();
+  if (data.review) data.review.reviewedOn = store.todayHK();
+  store.save(data);
+  reviewItems = null;
+  renderReview();
+  toast("✅ 熱身完成！而家揀話題開始傾啦");
 }
 
 // ===== 我的紀錄 =====
@@ -527,6 +704,108 @@ function testVoice() {
   );
 }
 
+// ===== 第一次用：歡迎＋教學 =====
+const W_STEPS = 4;
+let installPrompt = null; // Android Chrome 的「安裝 app」事件
+
+function showWelcome() {
+  $("welcome").hidden = false;
+  document.querySelector("header").hidden = true;
+  document.querySelector("main").hidden = true;
+  $("w-key").value = settings.apiKey;
+  $("w-key-next").disabled = !settings.apiKey;
+  goStep(0);
+}
+
+function closeWelcome() {
+  settings = { ...settings, onboarded: true };
+  store.saveSettings(settings);
+  $("welcome").hidden = true;
+  document.querySelector("header").hidden = false;
+  document.querySelector("main").hidden = false;
+  showTab("practice");
+  window.scrollTo(0, 0);
+}
+
+function goStep(n) {
+  document.querySelectorAll(".wstep").forEach((s, i) => (s.hidden = i !== n));
+  $("w-dots").innerHTML = Array.from({ length: W_STEPS }, (_, i) => `<span class="${i === n ? "on" : ""}"></span>`).join("");
+  if (n === 3) renderInstallTips();
+  window.scrollTo(0, 0);
+}
+
+async function welcomeCheckKey() {
+  const key = $("w-key").value.trim();
+  const out = $("w-key-result");
+  if (!key) return (out.innerHTML = "❌ 請先貼上 key");
+  if (!key.startsWith("gsk_")) return (out.innerHTML = "❌ 條 key 應該係 <code>gsk_</code> 開頭，再複製一次？");
+  out.innerHTML = "⏳ 檢查緊…";
+  const btn = $("w-key-check");
+  btn.disabled = true;
+  try {
+    await ai.chat({ ...settings, apiKey: key }, [{ role: "user", content: "Reply with exactly: OK" }], {
+      maxTokens: 5,
+      temperature: 0,
+    });
+    settings = { ...settings, apiKey: key };
+    store.saveSettings(settings);
+    out.innerHTML = "✅ 成功！條 key 已經儲存，撳「下一步」。";
+    $("w-key-next").disabled = false;
+  } catch (e) {
+    const msg = String(e?.message).startsWith("401")
+      ? "條 key 唔啱。返 Groq 網站再撳 Copy 複製一次，或者開一條新嘅？"
+      : friendlyError(e);
+    out.innerHTML = `❌ ${esc(msg)}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function welcomeMic() {
+  recordAndTranscribe($("w-mic"), "🎤 再試一次", (text) => {
+    $("w-mic-result").innerHTML = text
+      ? `✅ 咪用得！Buddy 聽到：「${esc(text)}」`
+      : "⚠️ 錄到音但聽唔到內容，講大聲啲再試？";
+  });
+}
+
+function renderInstallTips() {
+  const ua = navigator.userAgent;
+  const standalone = matchMedia("(display-mode: standalone)").matches || navigator.standalone;
+  let html;
+  if (standalone) {
+    html = "<p>✅ 你已經喺主畫面打開緊，唔使再加。</p>";
+  } else if (/iPhone|iPad|iPod/.test(ua)) {
+    html = `<p><b>iPhone／iPad（Safari）</b></p><ol>
+      <li>撳畫面底部（或頂部）嘅<b>分享掣</b> <span class="hint">（一個正方形加向上箭咀 ⬆️）</span></li>
+      <li>碌落去，撳 <b>「加入主畫面」</b></li>
+      <li>撳右上角 <b>「加入」</b></li></ol>`;
+  } else if (/Android/.test(ua)) {
+    html = `<p><b>Android（Chrome）</b></p><ol>
+      <li>撳右上角 <b>⋮</b></li>
+      <li>撳 <b>「加到主畫面」</b>或者<b>「安裝應用程式」</b></li>
+      <li>撳 <b>「新增」／「安裝」</b></li></ol>`;
+  } else {
+    html = `<p><b>電腦</b>：Edge／Chrome 網址列右邊如果有 <b>安裝</b> 圖示，撳佢就可以裝做 app。<br>
+      <span class="hint">主要係用手機練，記得喺手機都開一次呢個網址。</span></p>`;
+  }
+  if (installPrompt && !standalone) {
+    html += `<button type="button" id="w-install-btn" class="btn primary">📲 一撳安裝</button>`;
+  }
+  $("w-install").innerHTML = html;
+  $("w-install-btn")?.addEventListener("click", async () => {
+    installPrompt.prompt();
+    await installPrompt.userChoice.catch(() => {});
+    installPrompt = null;
+    renderInstallTips();
+  });
+}
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  installPrompt = e;
+});
+
 // 原本的模型唔用得、自動換咗另一個：記低，下次直接用
 ai.setModelFallbackHandler((model) => {
   settings = { ...settings, model };
@@ -538,10 +817,21 @@ ai.setModelFallbackHandler((model) => {
 // ===== 啟動 =====
 document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => showTab(b.dataset.tab)));
 $("start-btn").addEventListener("click", startSession);
-$("again-btn").addEventListener("click", startSession);
+// 再傾一次：返去揀話題
+$("again-btn").addEventListener("click", () => {
+  showView("home");
+  window.scrollTo(0, 0);
+});
+$("suggest-btn").addEventListener("click", suggestTopics);
+$("custom-topic").addEventListener("input", renderChips);
 $("mic-btn").addEventListener("click", toggleMic);
 $("text-form").addEventListener("submit", sendText);
 $("end-btn").addEventListener("click", finish);
+$("gap-btn").addEventListener("click", toggleGapBox);
+$("gap-form").addEventListener("submit", saveGap);
+$("review-say").addEventListener("click", reviewSay);
+$("review-show").addEventListener("click", () => reviewItems && revealAnswer());
+$("review-next").addEventListener("click", reviewNext);
 // 跟讀示範再慢少少
 $("play-btn").addEventListener("click", () =>
   phrases.length && ai.speak(phrases[pidx].en, { ...settings, rate: settings.rate * 0.9 }, onSpeakError)
@@ -572,12 +862,27 @@ $("test-key").addEventListener("click", testKey);
 $("test-mic").addEventListener("click", testMic);
 $("test-voice").addEventListener("click", testVoice);
 if (window.speechSynthesis) speechSynthesis.addEventListener("voiceschanged", fillVoices);
-document.addEventListener("visibilitychange", () => document.visibilityState === "visible" && renderDash());
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState !== "visible") return;
+  renderDash();
+  if (!reviewItems) initReview(); // 過咗夜再開 app，會出現新一日嘅熱身
+});
 setInterval(renderTimer, 15000);
+
+document.querySelectorAll("[data-wgo]").forEach((b) => b.addEventListener("click", () => goStep(Number(b.dataset.wgo))));
+$("w-key-check").addEventListener("click", welcomeCheckKey);
+$("w-mic").addEventListener("click", welcomeMic);
+$("w-done").addEventListener("click", closeWelcome);
+$("replay-welcome").addEventListener("click", showWelcome);
 
 store.requestPersist();
 renderDash();
-if (!settings.apiKey) {
+renderChips();
+initReview();
+// 第一次用（未有 key 又未睇過教學）就出歡迎頁；舊用家已經有 key，唔會見到
+if (!settings.apiKey && !settings.onboarded) {
+  showWelcome();
+} else if (!settings.apiKey) {
   showTab("settings");
-  toast("第一次用：請先輸入 Groq API key");
+  toast("請先輸入 Groq API key");
 }

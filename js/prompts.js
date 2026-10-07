@@ -33,20 +33,42 @@ Rules:
   return prompt;
 }
 
-export function topicPrompt(profile, recentTopics) {
+// requested：使用者揀咗或者自己打的話題（可能係中文）；冇就由 AI 揀
+export function topicPrompt(profile, recentTopics, requested) {
   const recent = recentTopics.map((t) => `- ${t}`).join("\n") || "- (none)";
+  const instruction = requested
+    ? `The learner chose today's topic themselves (it may be written in Chinese): "${requested}"
+Build today's chat around exactly this topic, made specific and fun. If it is a role-play (e.g. airport, hotel, interview), set the scene in the opener and play the other person.`
+    : `Recent topics (do not repeat):
+${recent}
+
+Mix everyday life and travel themes. If there are facts, about half the time build the topic around their own life (work, hobbies, upcoming trips, family).`;
   return `Pick today's topic for a 10-minute casual English chat with a learner from Hong Kong.
 
 Facts about the learner:
 ${facts(profile)}
 
-Recent topics (do not repeat):
-${recent}
-
-Mix everyday life and travel themes. If there are facts, about half the time build the topic around their own life (work, hobbies, upcoming trips, family).
+${instruction}
 
 Return ONLY JSON:
 {"topic": "<short English topic>", "topic_zh": "<the topic in Traditional Chinese (Hong Kong)>", "opener": "<friendly greeting plus one open question, max 2 sentences, plain text, no emojis>"}`;
+}
+
+// ✨ 建議話題：按使用者興趣，避開最近傾過的
+export function suggestPrompt(profile, recentTopics) {
+  const recent = recentTopics.map((t) => `- ${t}`).join("\n") || "- (none)";
+  return `Suggest 3 different, specific and fun topics for a 10-minute casual English chat with a learner from Hong Kong.
+
+Facts about the learner:
+${facts(profile)}
+
+Recent topics (avoid these):
+${recent}
+
+Mix: one about their own life (if facts exist), one everyday-life topic, one travel or role-play situation.
+
+Return ONLY JSON:
+{"topics": [{"topic": "<short English topic>", "topic_zh": "<short Traditional Chinese (Hong Kong) label, max 10 characters>"}]}`;
 }
 
 // 每句 💡 提示：只檢查使用者最新一句，回應要短，慳用量。
@@ -64,15 +86,23 @@ Return ONLY JSON, one of:
 {"ok": false, "better": "<the learner's sentence, minimally corrected to sound natural>", "note": "<max 15 Chinese characters in Traditional Chinese (Hong Kong) explaining the key fix>"}`;
 }
 
-export function summaryPrompt(transcript) {
+// gaps：傾偈時撳「🆘 講唔出」記低嘅 { zh: 想講嘅嘢（多數係中文）, context: Buddy 上一句 }
+export function summaryPrompt(transcript, gaps = []) {
+  const stuck = gaps.length
+    ? gaps.map((g, i) => `${i + 1}. Buddy had just said: "${g.context}" / Learner wanted to say: "${g.zh}"`).join("\n")
+    : "(none)";
   return `You are a kind English coach. Review this spoken English practice. Lines from "Learner" were captured by speech recognition.
 
 Transcript:
 ${transcript}
 
+Moments the learner got stuck and noted what they wanted to say (often in Chinese):
+${stuck}
+
 Return ONLY JSON:
 {
  "praise": "1-2 sentences in Traditional Chinese (Hong Kong) praising something specific they did well",
+ "gaps": [{"zh": "what they wanted to say, copied as given", "en": "a natural spoken English way to say it that fits the chat", "simple": "an easier way using only basic words"}],
  "corrections": [{"original": "learner's sentence", "better": "more natural version", "explain": "short reason in Traditional Chinese"}],
  "pronunciation": [{"word": "English word", "tip": "short tip in Traditional Chinese"}],
  "phrases": [{"en": "useful natural phrase for today's topic", "zh": "meaning in Traditional Chinese"}],
@@ -80,6 +110,7 @@ Return ONLY JSON:
 }
 
 Rules:
+- gaps: one item for each stuck moment above, in the same order. Keep "en" short and spoken (max 15 words). [] if none.
 - corrections: max 3, the most useful ones only; skip trivial ones. [] if none.
 - pronunciation: max 3. Include a word only if the transcript suggests a likely mispronunciation (an odd, out-of-context word that sounds like what they probably meant), or it is a word they used with a common pitfall for Cantonese speakers (th, final consonants, v/w, l/n, r/l). [] if nothing.
 - phrases: exactly 3, short and practical, at the learner's level.
