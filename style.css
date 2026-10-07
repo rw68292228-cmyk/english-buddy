@@ -84,6 +84,15 @@ input:not([type]), input[type=password], textarea, select {
 .toggle { display: flex; align-items: center; gap: 8px; margin: 8px 0; color: var(--muted); }
 .toggle input { width: 20px; height: 20px; }
 
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 4px 0 8px; }
+.chip {
+  padding: 8px 12px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--text); font-size: .95rem; cursor: pointer;
+}
+.chip.active { background: var(--primary); border-color: var(--primary); color: var(--primary-text); font-weight: 600; }
+.chip.suggested { border-style: dashed; }
+.btn.small { min-height: 40px; font-size: .92rem; }
+
 .topic-bar { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-weight: 600; margin-bottom: 8px; }
 #timer { color: var(--muted); font-weight: 400; }
 
@@ -108,6 +117,13 @@ input:not([type]), input[type=password], textarea, select {
   background: var(--tip); border-radius: 6px; font-size: .92rem; white-space: normal;
 }
 
+.bubble.gap {
+  align-self: center; max-width: 100%; padding: 4px 12px;
+  background: var(--tip); border-color: var(--tip-border); color: var(--muted); font-size: .9rem;
+}
+.gap-box { background: var(--bg); }
+.gap-box .hint b { color: var(--text); font-weight: 600; }
+
 .mic-area { text-align: center; margin: 8px 0; }
 .mic {
   width: 96px; height: 96px; border-radius: 50%; border: none;
@@ -126,6 +142,18 @@ input:not([type]), input[type=password], textarea, select {
 .phrase-en { font-size: 1.25rem; font-weight: 600; margin: 4px 0; }
 .marked { font-size: 1.15rem; }
 mark { background: var(--mark); color: inherit; border-radius: 4px; padding: 0 3px; font-weight: 600; }
+
+/* ===== 歡迎教學 ===== */
+.welcome h1 { font-size: 1.45rem; }
+.welcome h2 { font-size: 1.25rem; margin: 8px 0; }
+.welcome ul, .welcome ol { padding-left: 22px; margin: 6px 0; }
+.welcome li { margin-bottom: 8px; }
+.welcome .steps .btn { margin-top: 6px; }
+.welcome code { background: var(--bg); padding: 1px 6px; border-radius: 6px; }
+.dots { display: flex; justify-content: center; gap: 8px; margin: 8px 0 4px; }
+.dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--border); }
+.dots span.on { background: var(--primary); width: 22px; border-radius: 4px; }
+a.btn { text-decoration: none; }
 
 .test-result:not(:empty) {
   margin-top: 8px; padding: 10px 12px; border-radius: 10px;

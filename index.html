@@ -14,6 +14,86 @@
   <script type="module" src="js/app.js"></script>
 </head>
 <body>
+  <!-- ===== 第一次用：歡迎＋教學（4 步） ===== -->
+  <section id="welcome" class="welcome" hidden>
+    <div class="dots" id="w-dots"></div>
+
+    <div class="wstep">
+      <h1>👋 歡迎嚟到 English Buddy</h1>
+      <div class="card">
+        <p>每日 10 分鐘，用把口同 AI 朋友 <b>Buddy</b> 用英文傾偈：</p>
+        <ul>
+          <li>🎤 講嘢就得，唔使打字</li>
+          <li>😌 傾嘅時候<b>唔會打斷你改錯</b>，放膽講</li>
+          <li>📝 傾完先出總結：點講得更好、發音留意、實用句子</li>
+          <li>🔥 連續打卡、儲徽章</li>
+          <li>💸 <b>完全免費</b></li>
+        </ul>
+      </div>
+      <div class="card">
+        <p>🔒 <b>私隱</b>：你嘅紀錄同設定<b>只會存喺你部手機</b>，冇人睇到，包括分享畀你嘅朋友。</p>
+      </div>
+      <p class="hint center">只需要設定一次，大約 3 分鐘。</p>
+      <button type="button" class="btn primary big" data-wgo="1">開始設定 ➡️</button>
+    </div>
+
+    <div class="wstep" hidden>
+      <h2>1️⃣ 攞一條免費 AI 鎖匙</h2>
+      <p class="hint">Buddy 用 Groq 嘅免費 AI。你要申請一條自己嘅「API key」，好似鎖匙咁，唔使俾錢、唔使信用卡。</p>
+      <div class="card">
+        <ol class="steps">
+          <li>撳下面個掣，開 Groq 網站（會開新分頁）
+            <a class="btn" href="https://console.groq.com/keys" target="_blank" rel="noopener">🌐 開 Groq 網站</a>
+          </li>
+          <li>用 <b>Google 帳戶</b>登入最快</li>
+          <li>撳 <b>Create API Key</b>，個名隨便打，例如 <code>buddy</code>，再撳 <b>Submit</b></li>
+          <li>撳 <b>Copy</b> 複製條 key（<code>gsk_</code> 開頭）<br><span class="hint">⚠️ 佢只會顯示一次，記得即刻複製</span></li>
+          <li>返嚟呢個分頁，貼喺下面：</li>
+        </ol>
+        <input type="password" id="w-key" placeholder="貼上 gsk_..." autocomplete="off" spellcheck="false">
+        <button type="button" id="w-key-check" class="btn primary">✅ 檢查同儲存</button>
+        <div id="w-key-result" class="test-result"></div>
+      </div>
+      <p class="hint">🔒 條 key 只會存喺你部手機，只會用嚟直接連去 Groq。唔好將佢畀其他人。</p>
+      <div class="row">
+        <button type="button" class="btn" data-wgo="0">⬅️ 返回</button>
+        <button type="button" id="w-key-next" class="btn primary" data-wgo="2" disabled>下一步 ➡️</button>
+      </div>
+    </div>
+
+    <div class="wstep" hidden>
+      <h2>2️⃣ 試下個咪</h2>
+      <div class="card">
+        <p>撳下面個掣，用英文講一句，例如 <b>“Hello, nice to meet you!”</b>，講完再撳一下。</p>
+        <p class="hint">瀏覽器問你准唔准用咪，撳「允許」。</p>
+        <button type="button" id="w-mic" class="btn primary">🎤 撳一下開始講</button>
+        <div id="w-mic-result" class="test-result"></div>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" data-wgo="1">⬅️ 返回</button>
+        <button type="button" class="btn primary" data-wgo="3">下一步 ➡️</button>
+      </div>
+    </div>
+
+    <div class="wstep" hidden>
+      <h2>3️⃣ 加到主畫面</h2>
+      <p class="hint">加咗之後用起嚟好似一個 app，一撳就開。<b>iPhone 一定要加</b>，唔係 Safari 7 日冇開可能會清走你嘅紀錄。</p>
+      <div class="card" id="w-install"></div>
+      <div class="card">
+        <p>💡 <b>小貼士</b></p>
+        <ul>
+          <li>設定一個每日鬧鐘提自己練 10 分鐘</li>
+          <li>想換聲線、調慢語速，去「⚙️ 設定」</li>
+          <li>換手機前，去「📒 我的紀錄」撳匯出做備份</li>
+        </ul>
+      </div>
+      <div class="row">
+        <button type="button" class="btn" data-wgo="2">⬅️ 返回</button>
+        <button type="button" id="w-done" class="btn primary">🎉 完成，開始傾偈！</button>
+      </div>
+    </div>
+  </section>
+
   <header>
     <h1>🗣️ English Buddy</h1>
     <div id="dash" class="card dash"></div>
@@ -28,8 +108,24 @@
     <!-- ===== 今日練習 ===== -->
     <section id="tab-practice" class="tab">
       <div id="home">
+        <div id="review" class="card" hidden>
+          <h3>🔁 熱身：講返上次學嘅句子</h3>
+          <div id="review-item"></div>
+          <div class="row">
+            <button type="button" id="review-say" class="btn primary">🎤 用英文講出嚟</button>
+            <button type="button" id="review-show" class="btn">👀 睇答案</button>
+          </div>
+          <div id="review-result"></div>
+          <button type="button" id="review-next" class="btn">➡️ 下一句</button>
+        </div>
+        <div class="card">
+          <h3>🎯 今日想傾乜？</h3>
+          <div id="topic-chips" class="chips"></div>
+          <button type="button" id="suggest-btn" class="btn small">✨ Buddy 建議幾個新話題</button>
+          <input id="custom-topic" placeholder="✏️ 或者自己打話題（中英文都得）" autocomplete="off">
+        </div>
         <button type="button" id="start-btn" class="btn primary big">▶️ 開始今日 10 分鐘傾偈</button>
-        <p class="hint center">Buddy 會揀今日話題同你用英文傾偈。<br>傾嘅時候唔會打斷你改錯，傾完先總結。</p>
+        <p class="hint center">傾嘅時候唔會打斷你改錯，傾完先總結。</p>
       </div>
 
       <div id="chat" hidden>
@@ -38,6 +134,17 @@
         <div class="mic-area">
           <button type="button" id="mic-btn" class="mic" aria-label="錄音">🎤</button>
           <p id="mic-label" class="mic-label">撳一下開始講</p>
+        </div>
+        <button type="button" id="gap-btn" class="btn small">🆘 講唔出？撳我記低</button>
+        <div id="gap-box" class="card gap-box" hidden>
+          <p class="hint">先試下兜路講，唔好轉中文：<br>
+            <b>What's the word… it's like a…</b><br>
+            <b>Sorry, could you say that again a bit slower?</b><br>
+            <b>So you mean…?</b></p>
+          <form id="gap-form" class="row">
+            <input id="gap-input" placeholder="用中文打你想講嘅嘢，總結會教你" autocomplete="off" enterkeyhint="done">
+            <button class="btn">記低</button>
+          </form>
         </div>
         <label class="toggle"><input type="checkbox" id="tips-toggle"> 💡 每句顯示改正提示</label>
         <details class="type-box">
@@ -142,6 +249,8 @@
         <button type="button" id="test-voice" class="btn">3️⃣ 測試朗讀</button>
         <div id="test-result" class="test-result"></div>
       </div>
+
+      <button type="button" id="replay-welcome" class="btn">📖 重新睇新手教學</button>
     </section>
   </main>
 
