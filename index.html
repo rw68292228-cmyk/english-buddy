@@ -126,6 +126,25 @@
         </div>
         <button type="button" id="start-btn" class="btn primary big">▶️ 開始今日 10 分鐘傾偈</button>
         <p class="hint center">傾嘅時候唔會打斷你改錯，傾完先總結。</p>
+        <button type="button" id="dict-btn" class="btn">🎧 聽寫練習（5 句，練聽力）</button>
+        <p class="hint center">用上面揀咗嘅話題出句子；冇揀就日常對話。</p>
+      </div>
+
+      <div id="dictation" hidden>
+        <div class="card">
+          <div class="topic-bar"><span>🎧 聽寫練習</span><span id="dict-progress"></span></div>
+          <p class="hint">聽清楚，打低你聽到嘅字。聽唔到嘅位留空或者估都得，聽多幾次先對答案。</p>
+          <div class="row">
+            <button type="button" id="dict-play" class="btn primary">🔊 播放</button>
+            <button type="button" id="dict-slow" class="btn">🐢 慢速</button>
+          </div>
+          <p id="dict-plays" class="hint center"></p>
+          <textarea id="dict-input" rows="2" placeholder="打低你聽到嘅句子…" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"></textarea>
+          <button type="button" id="dict-check" class="btn primary">✅ 對答案</button>
+          <div id="dict-result"></div>
+          <button type="button" id="dict-next" class="btn" hidden>➡️ 下一句</button>
+        </div>
+        <button type="button" id="dict-quit" class="btn">⬅️ 返回</button>
       </div>
 
       <div id="chat" hidden>
@@ -147,6 +166,7 @@
           </form>
         </div>
         <label class="toggle"><input type="checkbox" id="tips-toggle"> 💡 每句顯示改正提示</label>
+        <label class="toggle"><input type="checkbox" id="listen-toggle"> 👂 只聽模式（Buddy 嘅字幕遮住，撳先睇）</label>
         <details class="type-box">
           <summary>⌨️ 唔方便出聲？改用打字</summary>
           <form id="text-form" class="row">
@@ -232,6 +252,16 @@
 
         <h3>💡 每句提示</h3>
         <label class="toggle"><input type="checkbox" id="tips-default"> 預設開啟（AI 用量約多一倍）</label>
+
+        <h3>👂 練聽力</h3>
+        <label class="toggle"><input type="checkbox" id="listen-default"> 只聽模式預設開啟（Buddy 嘅字幕遮住）</label>
+        <label>聽寫速度
+          <select id="dict-speed">
+            <option value="0.85">慢少少</option>
+            <option value="1">自然</option>
+            <option value="1.15">快（挑戰）</option>
+          </select>
+        </label>
 
         <details>
           <summary>進階</summary>

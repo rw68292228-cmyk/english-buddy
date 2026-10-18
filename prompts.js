@@ -137,6 +137,37 @@ Rules:
 - new_facts: personal info such as job, hobbies, plans, family, likes. [] if none.`;
 }
 
+// 🎧 聽寫：出 5 句真人日常會講、又有聽力難點嘅句子
+export function dictationPrompt(topic) {
+  return `Write 5 sentences for an English listening dictation exercise for a Cantonese speaker from Hong Kong (around CEFR B1).
+
+Theme: ${topic || "mixed everyday situations (work, travel, shopping, plans, feelings, small talk)"}
+
+Rules:
+- Each is something people really say in casual conversation, 6-14 words, standard spelling (write "going to", not "gonna").
+- Each sentence should contain at least one thing that is hard to catch by ear: linking between words ("pick it up"), weak forms (to, of, for, can, have), contractions (I'd, you'll, wouldn't), word endings (-ed, -s, -t), or a common phrasal verb.
+- Write numbers in words. No names or rare words.
+- Go from easier to harder.
+
+Return ONLY JSON:
+{"sentences": [{"en": "<sentence>", "zh": "<meaning in Traditional Chinese (Hong Kong)>"}]}`;
+}
+
+// 🎧 聽寫回饋：分析點解聽唔到
+export function dictationFeedbackPrompt(target, typed) {
+  return `A Hong Kong learner did an English listening dictation. Find what they failed to catch and explain why.
+
+Sentence played: "${target}"
+Learner typed: "${typed || "(nothing)"}"
+
+Ignore capitalisation, punctuation and small spelling slips that show they clearly heard the word.
+
+Return ONLY JSON:
+{"items": [{"heard": "<what they typed for this part, '' if nothing>", "actual": "<the words actually said>", "reason": "<one of: linking, weak, contraction, ending, similar, unknown, fast>", "explain": "<max 30 characters in Traditional Chinese (Hong Kong): how it really sounds and why it is hard to catch>"}], "tip": "<one short practical listening tip in Traditional Chinese (Hong Kong)>"}
+
+Rules: max 4 items, real misses only, in sentence order. reason meanings: linking = words run together, weak = unstressed small word, contraction = shortened form, ending = word ending not heard, similar = confused with a similar-sounding word, unknown = probably doesn't know the word, fast = missed a whole chunk.`;
+}
+
 // 由 LLM 回應中抽出第一個 JSON 物件；失敗回傳 null。
 export function parseJson(text) {
   const match = String(text).match(/\{[\s\S]*\}/);
