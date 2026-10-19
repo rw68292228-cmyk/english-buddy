@@ -131,6 +131,8 @@ const DEFAULT_SETTINGS = {
   ttsStyle: "gentle", // Orpheus 語氣標記
   rate: 0.85,
   showTips: true,
+  listenOnly: false, // 👂 只聽模式：Buddy 嘅字幕預設遮住
+  dictSpeed: 1, // 🎧 聽寫速度（相對自然語速的倍數）
 };
 
 export function loadSettings() {

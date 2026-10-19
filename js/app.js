@@ -2,7 +2,17 @@
 
 import * as ai from "./ai.js";
 import * as store from "./store.js";
-import { chatSystemPrompt, parseJson, suggestPrompt, summaryPrompt, tipPrompt, topicPrompt } from "./prompts.js";
+import {
+  DEFAULT_ANGLES,
+  chatSystemPrompt,
+  dictationFeedbackPrompt,
+  dictationPrompt,
+  parseJson,
+  suggestPrompt,
+  summaryPrompt,
+  tipPrompt,
+  topicPrompt,
+} from "./prompts.js";
 import { compareWords } from "./shadowing.js";
 
 const SESSION_MINUTES = 10;
@@ -46,6 +56,12 @@ function requireKey() {
 
 const minutes = () => (Date.now() - sess.start) / 60000;
 
+// 傾偈路線行到第幾步：收尾之前平均分配時間（4 步即每步約 2 分鐘）
+function planStep() {
+  const n = sess.angles.length || DEFAULT_ANGLES.length;
+  return Math.min(n - 1, Math.floor(minutes() / (WRAP_UP_MINUTES / n)));
+}
+
 // ===== 畫面切換 =====
 function showTab(name) {
   document.querySelectorAll(".tabs button").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
@@ -55,7 +71,7 @@ function showTab(name) {
 }
 
 function showView(name) {
-  for (const v of ["home", "chat", "summary"]) $(v).hidden = v !== name;
+  for (const v of ["home", "chat", "summary", "dictation"]) $(v).hidden = v !== name;
 }
 
 function renderDash() {
@@ -87,21 +103,43 @@ function onSpeakError(msg) {
   toast(`🔈 ${msg}`);
 }
 
-function say(text) {
-  ai.speak(text, settings, onSpeakError);
+// rateFactor：相對設定語速的倍數（🐢 慢速重播用）
+function say(text, rateFactor = 1) {
+  ai.speak(text, { ...settings, rate: settings.rate * rateFactor }, onSpeakError);
 }
 
-// Buddy 講嘢：顯示泡泡（附 🔊 重播掣）並朗讀
-function addBuddy(text) {
-  const div = addBubble("ai", esc(text));
+function smallButton(label, aria, onClick) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "replay";
-  btn.textContent = "🔊";
-  btn.setAttribute("aria-label", "重播");
-  btn.addEventListener("click", () => say(text));
-  div.appendChild(btn);
+  btn.textContent = label;
+  btn.setAttribute("aria-label", aria);
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+// Buddy 講嘢：顯示泡泡（附 🔊 重播、🐢 慢速）並朗讀；只聽模式下字幕遮住，撳先睇
+function addBuddy(text) {
+  const div = addBubble("ai", `<span class="say">${esc(text)}</span>`);
+  const btns = document.createElement("div");
+  btns.className = "bubble-btns";
+  btns.append(smallButton("🔊", "重播", () => say(text)), smallButton("🐢", "慢速重播", () => say(text, 0.75)));
+  if ($("listen-toggle").checked) {
+    div.classList.add("veiled");
+    sess.veiled++;
+    const peek = smallButton("👀 睇字幕", "顯示字幕", () => reveal(div));
+    div.querySelector(".say").addEventListener("click", () => reveal(div));
+    btns.append(peek);
+  }
+  div.appendChild(btns);
   say(text);
+}
+
+function reveal(div, counted = true) {
+  if (!div.classList.contains("veiled")) return;
+  div.classList.remove("veiled");
+  div.querySelector(".bubble-btns button:last-child")?.remove();
+  if (sess) counted ? sess.peeked++ : sess.veiled--; // 熄咗只聽模式而顯示的句子唔計
 }
 
 function setMic(state) {
@@ -199,7 +237,7 @@ async function startSession() {
     let j = {};
     try {
       const raw = await ai.chat(settings, [{ role: "user", content: topicPrompt(data.profile, recent, requested) }], {
-        maxTokens: 200,
+        maxTokens: 450,
         temperature: 0.9,
       });
       j = parseJson(raw) || {};
@@ -219,11 +257,16 @@ async function startSession() {
       messages: [{ role: "assistant", content: opener }],
       userTurns: 0,
       gaps: [], // 🆘 講唔出嘅位
+      veiled: 0, // 👂 只聽模式下 Buddy 講咗幾多句
+      peeked: 0, // 其中睇咗幾多次字幕
+      // 傾偈路線：同一個話題逐步深入，避免 AI 傾傾下兜返去舊話題
+      angles: (Array.isArray(j.angles) ? j.angles : []).filter((a) => typeof a === "string" && a.trim()).slice(0, 5),
     };
     $("gap-box").hidden = true;
     $("topic").textContent = `今日話題：${j.topic_zh || (requested ? requestedLabel : "週末計劃")}`;
     $("messages").innerHTML = "";
     $("tips-toggle").checked = settings.showTips;
+    $("listen-toggle").checked = settings.listenOnly;
     setMic("idle");
     showView("chat");
     addBuddy(opener);
@@ -255,7 +298,10 @@ async function quickTip(previousAi, userText) {
 async function respond(userText, viaVoice) {
   const userDiv = addBubble("me", (viaVoice ? "🎤 " : "") + esc(userText));
   const previousAi = sess.messages.at(-1)?.content || "";
-  const system = chatSystemPrompt(sess.profile, sess.topic, minutes() >= WRAP_UP_MINUTES);
+  const system = chatSystemPrompt(sess.profile, sess.topic, minutes() >= WRAP_UP_MINUTES, {
+    angles: sess.angles,
+    step: planStep(),
+  });
   const messages = [{ role: "system", content: system }, ...sess.messages.slice(-20), { role: "user", content: userText }];
 
   // 💡 提示同 AI 回應同時進行，提示返嚟就貼喺你句說話下面
@@ -339,10 +385,17 @@ function saveGap(e) {
 }
 
 // ===== 總結 =====
-function summaryHtml(j, raw, newBadges, gaps) {
+function summaryHtml(j, raw, newBadges, gaps, listen) {
   if (!j) return `<h2>🎉 今日總結</h2><p>${esc(raw)}</p>`;
   const parts = [`<h2>🎉 今日總結</h2>`, `<p>👏 ${esc(j.praise || "做得好！")}</p>`];
   if (newBadges.length) parts.push(`<p>🎖️ <b>新徽章：</b>${esc(newBadges.join(" "))}</p>`);
+  if (listen.veiled) {
+    const heard = listen.veiled - listen.peeked;
+    parts.push(
+      `<p>👂 <b>只聽模式：</b>Buddy 講咗 ${listen.veiled} 句，你唔睇字幕聽明咗 ${heard} 句` +
+        `（${Math.round((100 * heard) / listen.veiled)}%）</p>`
+    );
+  }
   const list = (items, fn) => `<ul>${items.map(fn).join("")}</ul>`;
   if (gaps.length) {
     parts.push(`<h3>🧩 你想講但講唔出嘅嘢</h3>`);
@@ -404,7 +457,7 @@ async function finish() {
     store.save(data);
     const newBadges = store.earnedBadges(data).filter((b) => !before.has(b));
 
-    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps);
+    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps, sess);
     renderPhrase();
     sess = null;
     renderDash();
@@ -530,6 +583,139 @@ function reviewNext() {
   toast("✅ 熱身完成！而家揀話題開始傾啦");
 }
 
+// ===== 🎧 聽寫練習：聽一句 → 打低 → 逐字對 → AI 分析點解聽唔到 =====
+const REASONS = {
+  linking: "連讀",
+  weak: "弱讀",
+  contraction: "縮寫",
+  ending: "字尾音",
+  similar: "近音字",
+  unknown: "唔識個字",
+  fast: "太快",
+};
+let dict = null; // { items: [{ en, zh }], i, plays, scores }
+
+// 聽寫用自然語速（瀏覽器 1.0、Orpheus 0.85 先係原速），再乘設定的倍數
+function dictSay(factor = 1) {
+  if (!dict) return;
+  const natural = settings.ttsEngine === "orpheus" ? 0.85 : 1;
+  ai.speak(dict.items[dict.i].en, { ...settings, rate: natural * settings.dictSpeed * factor }, onSpeakError);
+  dict.plays++;
+  $("dict-plays").textContent = `聽咗 ${dict.plays} 次`;
+}
+
+function setDictControls(show) {
+  for (const id of ["dict-play", "dict-slow", "dict-input", "dict-check"]) $(id).hidden = !show;
+}
+
+async function startDictation() {
+  if (busy || !requireKey()) return;
+  ai.unlockSpeech();
+  busy = true;
+  const btn = $("dict-btn");
+  const label = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = "⏳ 準備緊句子…";
+  try {
+    const topic = $("custom-topic").value.trim() || chosenTopic.en;
+    const raw = await ai.chat(settings, [{ role: "user", content: dictationPrompt(topic) }], {
+      maxTokens: 600,
+      temperature: 0.9,
+    });
+    const items = (parseJson(raw)?.sentences || []).filter((s) => s && s.en).slice(0, 5);
+    if (!items.length) throw new Error("出唔到句子，再撳一次？");
+    dict = { items, i: 0, plays: 0, scores: [] };
+    showView("dictation");
+    window.scrollTo(0, 0);
+    renderDictation();
+  } catch (e) {
+    toast(friendlyError(e));
+  } finally {
+    busy = false;
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+}
+
+function renderDictation() {
+  dict.plays = 0;
+  $("dict-progress").textContent = `第 ${dict.i + 1}/${dict.items.length} 句`;
+  $("dict-input").value = "";
+  $("dict-input").disabled = false;
+  $("dict-result").innerHTML = "";
+  $("dict-next").hidden = true;
+  setDictControls(true);
+  dictSay();
+}
+
+async function checkDictation() {
+  if (!dict || $("dict-input").disabled) return;
+  const item = dict.items[dict.i];
+  const typed = $("dict-input").value.trim();
+  if (!typed && !confirm("一個字都未打，直接睇答案？")) return;
+  const r = compareWords(item.en, typed);
+  dict.scores[dict.i] = r.score;
+  $("dict-input").disabled = true;
+  $("dict-check").hidden = true;
+  $("dict-next").hidden = false;
+  $("dict-next").textContent = dict.i + 1 < dict.items.length ? "➡️ 下一句" : "🏁 睇結果";
+  $("dict-result").innerHTML =
+    `<h3>🎯 聽啱 ${r.score}%</h3><p class="marked">${r.html}</p><p>${esc(item.zh)}</p>` +
+    (r.missed.length
+      ? `<p class="hint">標咗色嘅係你漏咗或者聽錯嘅字。睇住答案撳 🔊 再聽，留意佢真正點讀。</p><p class="hint" id="dict-why">⏳ 分析緊點解聽唔到…</p>`
+      : "<p>完美！🎉</p>");
+  if (!r.missed.length) return;
+  try {
+    const raw = await ai.chat(settings, [{ role: "user", content: dictationFeedbackPrompt(item.en, typed) }], {
+      maxTokens: 500,
+      temperature: 0.2,
+    });
+    const j = parseJson(raw) || {};
+    const why = (j.items || []).filter((x) => x && x.actual);
+    const html =
+      (why.length
+        ? `<h3>🔍 點解聽唔到</h3><ul class="dict-items">${why
+            .map(
+              (x) =>
+                `<li><span class="reason">${esc(REASONS[x.reason] || x.reason || "")}</span> <b>${esc(x.actual)}</b>` +
+                `${x.heard ? `（你聽成「${esc(x.heard)}」）` : ""}<br>${esc(x.explain)}</li>`
+            )
+            .join("")}</ul>`
+        : "") + (j.tip ? `<p>💡 ${esc(j.tip)}</p>` : "");
+    const box = $("dict-why"); // 已經撳咗下一句就唔使顯示
+    if (box) box.outerHTML = html;
+  } catch (e) {
+    $("dict-why")?.remove();
+    toast(friendlyError(e));
+  }
+}
+
+function nextDictation() {
+  if (!dict) return;
+  if (dict.i + 1 < dict.items.length) {
+    dict.i++;
+    renderDictation();
+    return;
+  }
+  const avg = Math.round(dict.scores.reduce((a, b) => a + (b || 0), 0) / dict.items.length);
+  $("dict-progress").textContent = "完成";
+  $("dict-plays").textContent = "";
+  $("dict-next").hidden = true;
+  setDictControls(false);
+  $("dict-result").innerHTML =
+    `<h3>🎉 完成！平均聽啱 ${avg}%</h3><ul class="dict-items">${dict.items
+      .map((it, k) => `<li>${dict.scores[k] ?? 0}%｜<b>${esc(it.en)}</b><br>${esc(it.zh)}</li>`)
+      .join("")}</ul>` +
+    `<p class="hint">分數低嘅句子，大聲跟讀幾次，下次會聽得清楚好多。想再練就返回再撳「🎧 聽寫練習」。</p>`;
+}
+
+function quitDictation() {
+  dict = null;
+  ai.stopSpeaking();
+  showView("home");
+  window.scrollTo(0, 0);
+}
+
 // ===== 我的紀錄 =====
 function renderRecords() {
   const d = store.load();
@@ -608,6 +794,8 @@ function renderSettings() {
   $("rate").value = settings.rate;
   $("rate-val").textContent = settings.rate;
   $("tips-default").checked = settings.showTips;
+  $("listen-default").checked = settings.listenOnly;
+  $("dict-speed").value = String(settings.dictSpeed);
   $("tts-engine").value = settings.ttsEngine;
   $("orpheus-voice").innerHTML = ai.ORPHEUS_VOICES.map(([id, name]) => `<option value="${id}">${esc(name)}</option>`).join("");
   $("orpheus-voice").value = settings.orpheusVoice;
@@ -627,6 +815,8 @@ function formSettings() {
     ttsStyle: $("tts-style").value,
     rate: Number($("rate").value),
     showTips: $("tips-default").checked,
+    listenOnly: $("listen-default").checked,
+    dictSpeed: Number($("dict-speed").value) || 1,
   };
 }
 
@@ -828,6 +1018,22 @@ $("mic-btn").addEventListener("click", toggleMic);
 $("text-form").addEventListener("submit", sendText);
 $("end-btn").addEventListener("click", finish);
 $("gap-btn").addEventListener("click", toggleGapBox);
+// 中途熄咗只聽模式：全部字幕即刻顯示（唔計入睇字幕次數）
+$("listen-toggle").addEventListener("change", (e) => {
+  if (!e.target.checked) document.querySelectorAll("#messages .bubble.veiled").forEach((d) => reveal(d, false));
+});
+$("dict-btn").addEventListener("click", startDictation);
+$("dict-play").addEventListener("click", () => dictSay());
+$("dict-slow").addEventListener("click", () => dictSay(0.75));
+$("dict-check").addEventListener("click", checkDictation);
+$("dict-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    checkDictation();
+  }
+});
+$("dict-next").addEventListener("click", nextDictation);
+$("dict-quit").addEventListener("click", quitDictation);
 $("gap-form").addEventListener("submit", saveGap);
 $("review-say").addEventListener("click", reviewSay);
 $("review-show").addEventListener("click", () => reviewItems && revealAnswer());
