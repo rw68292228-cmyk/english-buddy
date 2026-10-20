@@ -117,6 +117,22 @@ input:not([type]), input[type=password], textarea, select {
 /* 👂 只聽模式：字幕模糊，撳先睇 */
 .bubble.veiled .say { filter: blur(6px); user-select: none; cursor: pointer; }
 
+/* 📖 撳字查解釋 */
+.bubble .w { cursor: pointer; border-radius: 4px; }
+.bubble:not(.veiled) .w:hover, .bubble .w.on { background: var(--tip); box-shadow: 0 0 0 2px var(--tip); }
+.word-sheet {
+  position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom));
+  max-width: 616px; max-height: 60vh; overflow-y: auto; margin: 0 auto; z-index: 9;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, .22);
+}
+.word-sheet .phrase-en { margin-top: 0; }
+
+.say-btns { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 4px; }
+.say-btns .replay {
+  padding: 0 8px; border: 1px solid var(--border); border-radius: 999px;
+  background: var(--bg); color: var(--text); font-size: .85rem; cursor: pointer;
+}
+
 .dict-items { padding-left: 20px; margin: 4px 0; }
 .dict-items li { margin-bottom: 6px; }
 .reason { display: inline-block; padding: 0 8px; border-radius: 999px; background: var(--tip); border: 1px solid var(--tip-border); font-size: .85rem; }

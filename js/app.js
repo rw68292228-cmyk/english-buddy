@@ -12,6 +12,7 @@ import {
   summaryPrompt,
   tipPrompt,
   topicPrompt,
+  wordPrompt,
 } from "./prompts.js";
 import { compareWords } from "./shadowing.js";
 
@@ -118,21 +119,93 @@ function smallButton(label, aria, onClick) {
   return btn;
 }
 
+// 每個英文字包成可以撳的 <span class="w">，撳就查解釋
+function wordsHtml(text) {
+  return String(text)
+    .split(/([A-Za-z]+(?:['’-][A-Za-z]+)*)/)
+    .map((part, i) => (i % 2 ? `<span class="w">${esc(part)}</span>` : esc(part)))
+    .join("");
+}
+
 // Buddy 講嘢：顯示泡泡（附 🔊 重播、🐢 慢速）並朗讀；只聽模式下字幕遮住，撳先睇
 function addBuddy(text) {
-  const div = addBubble("ai", `<span class="say">${esc(text)}</span>`);
+  const div = addBubble("ai", `<span class="say">${wordsHtml(text)}</span>`);
   const btns = document.createElement("div");
   btns.className = "bubble-btns";
   btns.append(smallButton("🔊", "重播", () => say(text)), smallButton("🐢", "慢速重播", () => say(text, 0.75)));
   if ($("listen-toggle").checked) {
     div.classList.add("veiled");
     sess.veiled++;
-    const peek = smallButton("👀 睇字幕", "顯示字幕", () => reveal(div));
-    div.querySelector(".say").addEventListener("click", () => reveal(div));
-    btns.append(peek);
+    btns.append(smallButton("👀 睇字幕", "顯示字幕", () => reveal(div)));
   }
+  // 遮住時撳一下先顯示；顯示咗之後撳字就查解釋
+  div.querySelector(".say").addEventListener("click", (e) => {
+    if (div.classList.contains("veiled")) return reveal(div);
+    const w = e.target.closest(".w");
+    if (w) lookupWord(w.textContent, text, w);
+  });
   div.appendChild(btns);
   say(text);
+}
+
+// ===== 📖 撳字查解釋 =====
+const wordCache = new Map(); // 同一句同一個字唔使再問 AI
+let currentWord = null; // 而家顯示緊的字 { en, zh }
+
+async function lookupWord(word, sentence, el) {
+  if (!requireKey()) return;
+  document.querySelectorAll(".w.on").forEach((x) => x.classList.remove("on"));
+  el.classList.add("on");
+  currentWord = null;
+  $("word-sheet").hidden = false;
+  $("word-save").disabled = true;
+  $("word-save").textContent = "⭐ 加入生詞";
+  $("word-body").innerHTML = `<p class="phrase-en">${esc(word)}</p><p class="hint">⏳ 查緊…</p>`;
+  const key = `${word.toLowerCase()}|${sentence}`;
+  try {
+    let j = wordCache.get(key);
+    if (!j) {
+      const raw = await ai.chat(settings, [{ role: "user", content: wordPrompt(word, sentence) }], {
+        maxTokens: 400,
+        temperature: 0.2,
+      });
+      j = parseJson(raw);
+      if (!j?.meaning) throw new Error("查唔到，再撳一次？");
+      wordCache.set(key, j);
+    }
+    if (!el.classList.contains("on")) return; // 查緊嘅時候已經撳咗第二個字
+    const term = j.term || word;
+    currentWord = { en: term, zh: j.meaning };
+    const related = (Array.isArray(j.related) ? j.related : []).filter((r) => r && r.en);
+    $("word-body").innerHTML =
+      `<p class="phrase-en">${esc(term)} <span class="hint">${esc(j.ipa)}</span></p>` +
+      `<p>${j.pos ? `<span class="reason">${esc(j.pos)}</span> ` : ""}${esc(j.meaning)}</p>` +
+      (j.example ? `<p>📝 ${esc(j.example)}<br><span class="hint">${esc(j.example_zh)}</span></p>` : "") +
+      (related.length
+        ? `<h3>🔗 相關詞彙</h3><ul class="dict-items">${related
+            .map((r) => `<li><b>${esc(r.en)}</b> — ${esc(r.zh)}</li>`)
+            .join("")}</ul>`
+        : "");
+    const saved = sess?.words.some((w) => w.en.toLowerCase() === term.toLowerCase());
+    $("word-save").disabled = !sess || saved;
+    $("word-save").textContent = saved ? "✅ 已加入生詞" : "⭐ 加入生詞";
+  } catch (e) {
+    if (el.classList.contains("on")) $("word-body").innerHTML = `<p class="phrase-en">${esc(word)}</p><p>❌ ${esc(friendlyError(e))}</p>`;
+  }
+}
+
+function saveWord() {
+  if (!currentWord || !sess) return;
+  if (!sess.words.some((w) => w.en.toLowerCase() === currentWord.en.toLowerCase())) sess.words.push(currentWord);
+  $("word-save").disabled = true;
+  $("word-save").textContent = "✅ 已加入生詞";
+  toast("⭐ 已加入生詞，傾完會放入總結同下次熱身");
+}
+
+function closeWord() {
+  $("word-sheet").hidden = true;
+  document.querySelectorAll(".w.on").forEach((x) => x.classList.remove("on"));
+  currentWord = null;
 }
 
 function reveal(div, counted = true) {
@@ -259,6 +332,7 @@ async function startSession() {
       gaps: [], // 🆘 講唔出嘅位
       veiled: 0, // 👂 只聽模式下 Buddy 講咗幾多句
       peeked: 0, // 其中睇咗幾多次字幕
+      words: [], // ⭐ 撳字查完加入嘅生詞 { en, zh }
       // 傾偈路線：同一個話題逐步深入，避免 AI 傾傾下兜返去舊話題
       angles: (Array.isArray(j.angles) ? j.angles : []).filter((a) => typeof a === "string" && a.trim()).slice(0, 5),
     };
@@ -385,6 +459,13 @@ function saveGap(e) {
 }
 
 // ===== 總結 =====
+// 🔊 原速、🐢 慢速朗讀掣；撳嘅處理喺 #summary-body 的 click（data-say）
+const sayBtns = (text) =>
+  text
+    ? ` <span class="say-btns"><button type="button" class="replay" data-say="${esc(text)}" aria-label="朗讀">🔊</button>` +
+      `<button type="button" class="replay" data-say="${esc(text)}" data-slow="1" aria-label="慢速朗讀">🐢</button></span>`
+    : "";
+
 function summaryHtml(j, raw, newBadges, gaps, listen) {
   if (!j) return `<h2>🎉 今日總結</h2><p>${esc(raw)}</p>`;
   const parts = [`<h2>🎉 今日總結</h2>`, `<p>👏 ${esc(j.praise || "做得好！")}</p>`];
@@ -402,24 +483,41 @@ function summaryHtml(j, raw, newBadges, gaps, listen) {
     parts.push(
       list(
         gaps,
-        (g) => `<li>${esc(g.zh)}<br>✅ <b>${esc(g.en)}</b>${g.simple ? `<br>🪜 簡單啲：${esc(g.simple)}` : ""}</li>`
+        (g) =>
+          `<li>${esc(g.zh)}<br>✅ <b>${esc(g.en)}</b>${sayBtns(g.en)}` +
+          `${g.simple ? `<br>🪜 簡單啲：${esc(g.simple)}${sayBtns(g.simple)}` : ""}</li>`
       )
     );
     parts.push(`<p class="hint">下面跟讀會由呢幾句開始，每句大聲講 3 次 💪</p>`);
   }
+  if (listen.words.length) {
+    parts.push(`<h3>⭐ 今日生詞</h3>`);
+    parts.push(list(listen.words, (w) => `<li><b>${esc(w.en)}</b>${sayBtns(w.en)} — ${esc(w.zh)}</li>`));
+  }
   if (j.corrections?.length) {
     parts.push(`<h3>✍️ 可以講得更好</h3>`);
     parts.push(
-      list(j.corrections, (c) => `<li>❌ ${esc(c.original)}<br>✅ <b>${esc(c.better)}</b><br>💡 ${esc(c.explain)}</li>`)
+      list(
+        j.corrections,
+        (c) => `<li>❌ ${esc(c.original)}<br>✅ <b>${esc(c.better)}</b>${sayBtns(c.better)}<br>💡 ${esc(c.explain)}</li>`
+      )
     );
   }
   if (j.pronunciation?.length) {
     parts.push(`<h3>🗣️ 發音留意</h3>`);
-    parts.push(list(j.pronunciation, (p) => `<li><b>${esc(p.word)}</b>：${esc(p.tip)}</li>`));
+    parts.push(
+      list(
+        j.pronunciation,
+        (p) =>
+          `<li><b>${esc(p.word)}</b>${sayBtns(p.word)}：${esc(p.tip)}` +
+          `${p.example ? `<br>📝 ${esc(p.example)}${sayBtns(p.example)}` : ""}</li>`
+      )
+    );
+    parts.push(`<p class="hint">撳 🔊 聽幾次，跟住大聲讀；🐢 係慢速。</p>`);
   }
   if (j.phrases?.length) {
     parts.push(`<h3>💬 今日實用句子</h3>`);
-    parts.push(list(j.phrases, (p) => `<li><b>${esc(p.en)}</b> — ${esc(p.zh)}</li>`));
+    parts.push(list(j.phrases, (p) => `<li><b>${esc(p.en)}</b>${sayBtns(p.en)} — ${esc(p.zh)}</li>`));
   }
   return parts.join("");
 }
@@ -452,14 +550,20 @@ async function finish() {
 
     const data = store.load();
     const before = new Set(store.earnedBadges(data));
-    store.addSession(data, sess.topic, minutes(), sess.userTurns, j?.new_facts || [], phrases);
-    store.setReview(data, phrases.map((p) => ({ en: p.en, zh: p.zh || "", gap: !!p.gap })));
+    store.addSession(data, sess.topic, minutes(), sess.userTurns, j?.new_facts || [], [...phrases, ...sess.words]);
+    // 熱身次序：講唔出 → 生詞 → 實用句子
+    store.setReview(data, [
+      ...gaps.map((g) => ({ en: g.en, zh: g.zh || "", gap: true })),
+      ...sess.words.map((w) => ({ en: w.en, zh: w.zh, gap: false })),
+      ...daily.map((p) => ({ en: p.en, zh: p.zh || "", gap: false })),
+    ]);
     store.save(data);
     const newBadges = store.earnedBadges(data).filter((b) => !before.has(b));
 
     $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps, sess);
     renderPhrase();
     sess = null;
+    closeWord();
     renderDash();
     showView("summary");
     window.scrollTo(0, 0);
@@ -1018,6 +1122,14 @@ $("mic-btn").addEventListener("click", toggleMic);
 $("text-form").addEventListener("submit", sendText);
 $("end-btn").addEventListener("click", finish);
 $("gap-btn").addEventListener("click", toggleGapBox);
+// 總結入面每個 🔊／🐢 掣
+$("summary-body").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-say]");
+  if (b) say(b.dataset.say, b.dataset.slow ? 0.7 : 1);
+});
+$("word-say").addEventListener("click", () => currentWord && say(currentWord.en, 0.9));
+$("word-save").addEventListener("click", saveWord);
+$("word-close").addEventListener("click", closeWord);
 // 中途熄咗只聽模式：全部字幕即刻顯示（唔計入睇字幕次數）
 $("listen-toggle").addEventListener("change", (e) => {
   if (!e.target.checked) document.querySelectorAll("#messages .bubble.veiled").forEach((d) => reveal(d, false));

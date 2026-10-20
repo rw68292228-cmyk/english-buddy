@@ -124,7 +124,7 @@ Return ONLY JSON:
  "praise": "1-2 sentences in Traditional Chinese (Hong Kong) praising something specific they did well",
  "gaps": [{"zh": "what they wanted to say, copied as given", "en": "a natural spoken English way to say it that fits the chat", "simple": "an easier way using only basic words"}],
  "corrections": [{"original": "learner's sentence", "better": "more natural version", "explain": "short reason in Traditional Chinese"}],
- "pronunciation": [{"word": "English word", "tip": "short tip in Traditional Chinese"}],
+ "pronunciation": [{"word": "English word", "tip": "short tip in Traditional Chinese", "example": "a short natural sentence using the word, ideally the one they said"}],
  "phrases": [{"en": "useful natural phrase for today's topic", "zh": "meaning in Traditional Chinese"}],
  "new_facts": ["short English fact the learner revealed about themselves"]
 }
@@ -166,6 +166,21 @@ Return ONLY JSON:
 {"items": [{"heard": "<what they typed for this part, '' if nothing>", "actual": "<the words actually said>", "reason": "<one of: linking, weak, contraction, ending, similar, unknown, fast>", "explain": "<max 30 characters in Traditional Chinese (Hong Kong): how it really sounds and why it is hard to catch>"}], "tip": "<one short practical listening tip in Traditional Chinese (Hong Kong)>"}
 
 Rules: max 4 items, real misses only, in sentence order. reason meanings: linking = words run together, weak = unstressed small word, contraction = shortened form, ending = word ending not heard, similar = confused with a similar-sounding word, unknown = probably doesn't know the word, fast = missed a whole chunk.`;
+}
+
+// 📖 撳字查解釋：按句子語境解釋，連同片語同相關詞彙
+export function wordPrompt(word, sentence) {
+  return `A Cantonese speaker from Hong Kong learning English tapped a word they don't know in this sentence.
+
+Sentence: "${sentence}"
+Word tapped: "${word}"
+
+Explain it as used in THIS sentence. If the word is part of a phrase, phrasal verb or idiom here (e.g. "pick up", "by the way", "end up"), explain the whole phrase.
+
+Return ONLY JSON:
+{"term": "<the word or whole phrase explained>", "ipa": "<IPA pronunciation of term>", "pos": "<part of speech in Traditional Chinese, e.g. 動詞、名詞、片語>", "meaning": "<meaning in this sentence, Traditional Chinese (Hong Kong), max 25 characters>", "example": "<a new, simple everyday example sentence using term>", "example_zh": "<its Traditional Chinese (Hong Kong) translation>", "related": [{"en": "<related word or phrase>", "zh": "<short Traditional Chinese meaning>"}]}
+
+Rules: related = 3-4 items most useful in daily conversation: common collocations, the word family (e.g. decide / decision), or a simpler synonym.`;
 }
 
 // 由 LLM 回應中抽出第一個 JSON 物件；失敗回傳 null。

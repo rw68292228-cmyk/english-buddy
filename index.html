@@ -153,6 +153,7 @@
       <div id="chat" hidden>
         <div class="topic-bar"><span id="topic"></span><span id="timer"></span></div>
         <div id="messages" class="messages"></div>
+        <p class="hint center">📖 唔識邊個字？撳 Buddy 講嘅字就有中文解釋</p>
         <div class="mic-area">
           <button type="button" id="mic-btn" class="mic" aria-label="錄音">🎤</button>
           <p id="mic-label" class="mic-label">撳一下開始講</p>
@@ -286,6 +287,16 @@
       <button type="button" id="replay-welcome" class="btn">📖 重新睇新手教學</button>
     </section>
   </main>
+
+  <!-- 📖 撳字查解釋 -->
+  <div id="word-sheet" class="word-sheet card" role="dialog" aria-label="字詞解釋" hidden>
+    <div id="word-body"></div>
+    <div class="row">
+      <button type="button" id="word-say" class="btn">🔊 讀出</button>
+      <button type="button" id="word-save" class="btn primary">⭐ 加入生詞</button>
+      <button type="button" id="word-close" class="btn">✕ 關閉</button>
+    </div>
+  </div>
 
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
