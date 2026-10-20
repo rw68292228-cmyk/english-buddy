@@ -80,7 +80,9 @@ function renderDash() {
   const badges = store.earnedBadges(d).join(" ") || "完成第一次練習就有徽章！";
   $("dash").innerHTML =
     `<div class="streak">🔥 連續 ${store.currentStreak(d)} 日 · ${store.doneToday(d) ? "✅ 今日已完成" : "⏳ 今日未練"}</div>` +
-    `<div class="badges">最長紀錄 ${store.longestStreak(d)} 日 · ${esc(badges)}</div>`;
+    `<div class="badges">最長紀錄 ${store.longestStreak(d)} 日 · ${esc(badges)}</div>` +
+    `<div class="badges">📈 ${SKILLS.speaking} ${esc(store.levelOf(d, "speaking") || "未評定")} · ` +
+    `${SKILLS.listening} ${esc(store.levelOf(d, "listening") || "未評定")}</div>`;
 }
 
 function renderTimer() {
@@ -333,11 +335,12 @@ async function startSession() {
       veiled: 0, // 👂 只聽模式下 Buddy 講咗幾多句
       peeked: 0, // 其中睇咗幾多次字幕
       words: [], // ⭐ 撳字查完加入嘅生詞 { en, zh }
+      band: store.targetBand(data), // Buddy 用嘅 CEFR 程度：比你高一級
       // 傾偈路線：同一個話題逐步深入，避免 AI 傾傾下兜返去舊話題
       angles: (Array.isArray(j.angles) ? j.angles : []).filter((a) => typeof a === "string" && a.trim()).slice(0, 5),
     };
     $("gap-box").hidden = true;
-    $("topic").textContent = `今日話題：${j.topic_zh || (requested ? requestedLabel : "週末計劃")}`;
+    $("topic").textContent = `今日話題：${j.topic_zh || (requested ? requestedLabel : "週末計劃")} · Buddy 用 ${sess.band} 程度`;
     $("messages").innerHTML = "";
     $("tips-toggle").checked = settings.showTips;
     $("listen-toggle").checked = settings.listenOnly;
@@ -375,7 +378,7 @@ async function respond(userText, viaVoice) {
   const system = chatSystemPrompt(sess.profile, sess.topic, minutes() >= WRAP_UP_MINUTES, {
     angles: sess.angles,
     step: planStep(),
-  });
+  }, sess.band);
   const messages = [{ role: "system", content: system }, ...sess.messages.slice(-20), { role: "user", content: userText }];
 
   // 💡 提示同 AI 回應同時進行，提示返嚟就貼喺你句說話下面
@@ -458,6 +461,91 @@ function saveGap(e) {
   toast("✅ 記低咗，總結會教你點講。繼續傾，試下兜路講！");
 }
 
+// ===== 📈 CEFR 等級同升級慶祝 =====
+const SKILLS = { speaking: "🗣️ 說話", listening: "👂 聆聽" };
+// 每級「做得到乜」：升級時顯示，等你知自己進步咗喺邊
+const CAN_DO = {
+  A1: "識用簡單字句介紹自己，答到好基本嘅問題",
+  A2: "應付到日常簡單交流，例如買嘢、問路、講自己嘅生活",
+  "A2+": "日常話題講得長啲，識用 because、so 連接句子",
+  B1: "熟悉嘅話題可以自己傾落去，識講經歷、計劃同簡單意見",
+  "B1+": "識解釋意見同原因，聽得明大部分日常對話",
+  B2: "同母語人士傾偈都算流暢自然，識討論抽象話題",
+  "B2+": "表達準確又有變化，聽得明快速自然嘅對話",
+  C1: "流利靈活，工作同學術場合都應付得到",
+  C2: "接近母語程度，連細微語氣都掌握到",
+};
+
+// 聆聽證據：用某個程度聽，聽明 85% 以上當你有嗰個程度；60–85% 低一級；再低就低兩級
+function listeningEvidence(band, ratio) {
+  const i = store.bandIndex(band);
+  return store.clampBand(ratio >= 0.85 ? i : ratio >= 0.6 ? i - 1 : i - 2);
+}
+
+function levelSummaryHtml(data, j, rated) {
+  const sp = store.levelOf(data, "speaking");
+  const li = store.levelOf(data, "listening");
+  const rows = [];
+  if (rated && j?.cefr) {
+    rows.push(`<p>今次說話表現：<b>${esc(j.cefr)}</b>${j.cefr_reason ? `（${esc(j.cefr_reason)}）` : ""}</p>`);
+  }
+  rows.push(`<p>你而家嘅等級：${SKILLS.speaking} <b>${esc(sp || "未評定")}</b> · ${SKILLS.listening} <b>${esc(li || "未評定")}</b></p>`);
+  if (j?.next_step) rows.push(`<p>🎯 下一步：${esc(j.next_step)}</p>`);
+  if (!li) rows.push(`<p class="hint">開「👂 只聽模式」傾偈，或者做「🎧 聽寫」，就會評埋聆聽等級。</p>`);
+  return `<h3>📈 等級（CEFR）</h3>${rows.join("")}`;
+}
+
+// 等級有變：升級就放煙花慶祝；第一次評級就話你知起點；降級唔彈窗，總結睇到就夠
+function showLevelChanges(changes) {
+  const ups = changes.filter((c) => !c.from || store.bandIndex(c.to) > store.bandIndex(c.from));
+  if (!ups.length) return;
+  const levelUp = ups.some((c) => c.from);
+  $("levelup-title").textContent = levelUp ? "🎉 升級喇！" : "🎯 你嘅起始等級";
+  $("levelup-badge").textContent = ups.map((c) => c.to).join(" · ");
+  $("levelup-body").innerHTML = ups
+    .map(
+      (c) =>
+        `<p><b>${SKILLS[c.skill]}：${c.from ? `${esc(c.from)} → ` : ""}${esc(c.to)}</b><br>` +
+        `<span class="hint">而家你${esc(CAN_DO[c.to] || "")}</span></p>`
+    )
+    .join("") +
+    (levelUp ? "" : `<p class="hint">之後 Buddy 會用比你高少少嘅程度同你傾，拉你一步步升級。</p>`);
+  const box = $("confetti");
+  box.innerHTML = "";
+  if (levelUp) {
+    const colors = ["#4f46e5", "#f0997b", "#f0c040", "#1d9e75", "#d4537e", "#7c74ff"];
+    for (let i = 0; i < 60; i++) {
+      const s = document.createElement("span");
+      s.style.left = `${Math.random() * 100}%`;
+      s.style.background = colors[i % colors.length];
+      s.style.animationDelay = `${Math.random() * 1.2}s`;
+      s.style.animationDuration = `${2.2 + Math.random() * 1.6}s`;
+      s.style.setProperty("--spin", `${Math.random() * 720 - 360}deg`);
+      box.appendChild(s);
+    }
+    say("Congratulations! You levelled up!");
+  }
+  $("levelup").hidden = false;
+}
+
+function renderLevels() {
+  const d = store.load();
+  const rows = ["speaking", "listening"].map((k) => {
+    const s = d.level?.[k];
+    const recent = (s?.history || []).slice(-8).map((h) => esc(h.band)).join(" → ");
+    return (
+      `<p><b>${SKILLS[k]}：${esc(s?.band || "未評定")}</b>` +
+      `${s?.band ? `<br><span class="hint">${esc(CAN_DO[s.band])}</span>` : ""}` +
+      `${recent ? `<br><span class="hint">最近評估：${recent}</span>` : ""}</p>`
+    );
+  });
+  const note = d.level?.speaking?.note;
+  $("levels").innerHTML =
+    rows.join("") +
+    (note ? `<p>🎯 下一步：${esc(note)}</p>` : "") +
+    `<p class="hint">Buddy 而家用 <b>${esc(store.targetBand(d))}</b> 程度同你傾，即係比你高一級。等級取最近 3 次評估嘅中間值，一次發揮失常唔會即刻跳級或者降級。</p>`;
+}
+
 // ===== 總結 =====
 // 🔊 原速、🐢 慢速朗讀掣；撳嘅處理喺 #summary-body 的 click（data-say）
 const sayBtns = (text) =>
@@ -537,7 +625,7 @@ async function finish() {
     const transcript = sess.messages
       .map((m) => `${m.role === "user" ? "Learner" : "Buddy"}: ${m.content}`)
       .join("\n");
-    const raw = await ai.chat(settings, [{ role: "user", content: summaryPrompt(transcript, sess.gaps) }], {
+    const raw = await ai.chat(settings, [{ role: "user", content: summaryPrompt(transcript, sess.gaps, sess.band) }], {
       maxTokens: 1200 + 120 * sess.gaps.length,
       temperature: 0.3,
     });
@@ -557,16 +645,27 @@ async function finish() {
       ...sess.words.map((w) => ({ en: w.en, zh: w.zh, gap: false })),
       ...daily.map((p) => ({ en: p.en, zh: p.zh || "", gap: false })),
     ]);
+    // 📈 等級評估：說話睇 AI 評分（要傾夠 3 句）；聆聽睇只聽模式聽明幾多
+    const changes = [];
+    if (sess.userTurns >= 3 && store.bandIndex(j?.cefr) >= 0) {
+      const c = store.recordLevel(data, "speaking", j.cefr, j.next_step);
+      if (c) changes.push({ skill: "speaking", ...c });
+    }
+    if (sess.veiled >= 4) {
+      const c = store.recordLevel(data, "listening", listeningEvidence(sess.band, (sess.veiled - sess.peeked) / sess.veiled));
+      if (c) changes.push({ skill: "listening", ...c });
+    }
     store.save(data);
     const newBadges = store.earnedBadges(data).filter((b) => !before.has(b));
 
-    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps, sess);
+    $("summary-body").innerHTML = summaryHtml(j, raw, newBadges, gaps, sess) + levelSummaryHtml(data, j, sess.userTurns >= 3);
     renderPhrase();
     sess = null;
     closeWord();
     renderDash();
     showView("summary");
     window.scrollTo(0, 0);
+    showLevelChanges(changes);
   } catch (e) {
     toast(`總結失敗：${friendlyError(e)}（可以再撳一次）`);
   } finally {
@@ -722,13 +821,14 @@ async function startDictation() {
   btn.textContent = "⏳ 準備緊句子…";
   try {
     const topic = $("custom-topic").value.trim() || chosenTopic.en;
-    const raw = await ai.chat(settings, [{ role: "user", content: dictationPrompt(topic) }], {
+    const band = store.targetBand(store.load()); // 比你聆聽等級高一級
+    const raw = await ai.chat(settings, [{ role: "user", content: dictationPrompt(topic, band) }], {
       maxTokens: 600,
       temperature: 0.9,
     });
     const items = (parseJson(raw)?.sentences || []).filter((s) => s && s.en).slice(0, 5);
     if (!items.length) throw new Error("出唔到句子，再撳一次？");
-    dict = { items, i: 0, plays: 0, scores: [] };
+    dict = { items, i: 0, plays: 0, scores: [], band };
     showView("dictation");
     window.scrollTo(0, 0);
     renderDictation();
@@ -802,15 +902,23 @@ function nextDictation() {
     return;
   }
   const avg = Math.round(dict.scores.reduce((a, b) => a + (b || 0), 0) / dict.items.length);
+  // 📈 聆聽評估：用嘅程度 + 平均分
+  const data = store.load();
+  const change = store.recordLevel(data, "listening", listeningEvidence(dict.band, avg / 100));
+  store.save(data);
+  renderDash();
   $("dict-progress").textContent = "完成";
   $("dict-plays").textContent = "";
   $("dict-next").hidden = true;
   setDictControls(false);
   $("dict-result").innerHTML =
-    `<h3>🎉 完成！平均聽啱 ${avg}%</h3><ul class="dict-items">${dict.items
+    `<h3>🎉 完成！平均聽啱 ${avg}%</h3>` +
+    `<p>今次用 <b>${esc(dict.band)}</b> 程度 · 你而家 ${SKILLS.listening} 等級：<b>${esc(store.levelOf(data, "listening"))}</b></p>` +
+    `<ul class="dict-items">${dict.items
       .map((it, k) => `<li>${dict.scores[k] ?? 0}%｜<b>${esc(it.en)}</b><br>${esc(it.zh)}</li>`)
       .join("")}</ul>` +
     `<p class="hint">分數低嘅句子，大聲跟讀幾次，下次會聽得清楚好多。想再練就返回再撳「🎧 聽寫練習」。</p>`;
+  if (change) showLevelChanges([{ skill: "listening", ...change }]);
 }
 
 function quitDictation() {
@@ -822,6 +930,7 @@ function quitDictation() {
 
 // ===== 我的紀錄 =====
 function renderRecords() {
+  renderLevels();
   const d = store.load();
   $("profile").value = d.profile.join("\n");
   $("history").innerHTML =
@@ -1126,6 +1235,10 @@ $("gap-btn").addEventListener("click", toggleGapBox);
 $("summary-body").addEventListener("click", (e) => {
   const b = e.target.closest("[data-say]");
   if (b) say(b.dataset.say, b.dataset.slow ? 0.7 : 1);
+});
+$("levelup-ok").addEventListener("click", () => {
+  $("levelup").hidden = true;
+  $("confetti").innerHTML = "";
 });
 $("word-say").addEventListener("click", () => currentWord && say(currentWord.en, 0.9));
 $("word-save").addEventListener("click", saveWord);

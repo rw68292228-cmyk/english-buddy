@@ -22,7 +22,8 @@
     <div class="dots" id="w-dots"></div>
 
     <div class="wstep">
-      <h1>👋 歡迎嚟到 English Buddy</h1>
+      <img src="icon.svg" class="logo big" alt="" width="72" height="72">
+      <h1>歡迎嚟到 English Buddy</h1>
       <div class="card">
         <p>每日 10 分鐘，用把口同 AI 朋友 <b>Buddy</b> 用英文傾偈：</p>
         <ul>
@@ -98,7 +99,7 @@
   </section>
 
   <header>
-    <h1>🗣️ English Buddy</h1>
+    <h1 class="brand"><img src="icon.svg" class="logo" alt="" width="32" height="32"> English Buddy</h1>
     <div id="dash" class="card dash"></div>
     <nav class="tabs">
       <button type="button" data-tab="practice" class="active">☕ 今日練習</button>
@@ -200,6 +201,11 @@
     <!-- ===== 我的紀錄 ===== -->
     <section id="tab-records" class="tab" hidden>
       <div class="card">
+        <h3>📈 我的等級（CEFR）</h3>
+        <p class="hint">CEFR 係歐洲語言共同參考框架，British Council、Cambridge 同 IELTS 都用佢分級：A1、A2 係入門，B1、B2 係獨立使用者，C1、C2 係精通。「+」代表已經超過嗰級，但未夠下一級。呢度係 AI 按你練習表現估計，唔係官方考試成績。</p>
+        <div id="levels"></div>
+      </div>
+      <div class="card">
         <h3>🧠 Buddy 記得你嘅嘢</h3>
         <p class="hint">一行一項，可以自己加減。Buddy 會按呢啲出題同傾偈。</p>
         <textarea id="profile" rows="7" placeholder="例如：I work as a nurse in Kowloon."></textarea>
@@ -287,6 +293,17 @@
       <button type="button" id="replay-welcome" class="btn">📖 重新睇新手教學</button>
     </section>
   </main>
+
+  <!-- 📈 升級慶祝 -->
+  <div id="levelup" class="levelup" role="dialog" aria-label="等級" hidden>
+    <div id="confetti" class="confetti" aria-hidden="true"></div>
+    <div class="levelup-card card">
+      <div id="levelup-badge" class="levelup-badge"></div>
+      <h2 id="levelup-title"></h2>
+      <div id="levelup-body"></div>
+      <button type="button" id="levelup-ok" class="btn primary big">繼續加油 💪</button>
+    </div>
+  </div>
 
   <!-- 📖 撳字查解釋 -->
   <div id="word-sheet" class="word-sheet card" role="dialog" aria-label="字詞解釋" hidden>

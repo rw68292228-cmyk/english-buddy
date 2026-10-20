@@ -66,6 +66,40 @@ export function addSession(data, topic, minutes, turns, facts, phrases) {
   data.phrases = data.phrases.slice(-MAX_PHRASES);
 }
 
+// ===== CEFR 等級（歐洲語言共同參考框架，British Council／Cambridge／IELTS 都用） =====
+// 細分級數令進步睇得到；index 越大越高
+export const BANDS = ["A1", "A2", "A2+", "B1", "B1+", "B2", "B2+", "C1", "C2"];
+const DEFAULT_BAND = "B1"; // 未評定時 Buddy 用呢個程度
+const LEVEL_WINDOW = 3; // 用最近 3 次評估嘅中位數，避免一次發揮失常就跳級／降級
+const MAX_LEVEL_HISTORY = 60;
+
+export const bandIndex = (band) => BANDS.indexOf(band);
+export const clampBand = (i) => BANDS[Math.max(0, Math.min(BANDS.length - 1, i))];
+
+// skill：speaking（說話）或 listening（聆聽）；未評定回傳 null
+export const levelOf = (data, skill) => data.level?.[skill]?.band || null;
+
+// Buddy 同你溝通用嘅程度：比你聆聽等級高一級（未評定就用說話等級，再唔得用 B1）
+export function targetBand(data) {
+  const base = levelOf(data, "listening") || levelOf(data, "speaking") || DEFAULT_BAND;
+  return clampBand(bandIndex(base) + 1);
+}
+
+// 記低一次評估，回傳 { from, to }（等級有變）或 null
+export function recordLevel(data, skill, band, note = "") {
+  if (bandIndex(band) < 0) return null;
+  data.level ||= {};
+  const s = (data.level[skill] ||= { band: null, history: [] });
+  s.history.push({ date: todayHK(), band });
+  s.history = s.history.slice(-MAX_LEVEL_HISTORY);
+  if (note) s.note = note;
+  const recent = s.history.slice(-LEVEL_WINDOW).map((h) => bandIndex(h.band)).sort((a, b) => a - b);
+  const next = BANDS[recent[Math.floor(recent.length / 2)]];
+  const from = s.band;
+  s.band = next;
+  return from === next ? null : { from, to: next };
+}
+
 // 留低今日最值得複習嘅 3 句：「講唔出」嘅優先，其次係實用句子；同一日練多次就合併
 export function setReview(data, items) {
   const date = todayHK();

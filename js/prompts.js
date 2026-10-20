@@ -1,5 +1,20 @@
 // 所有俾 LLM 的提示詞，集中喺度方便之後調整。
 
+// 每個 CEFR 程度講嘢應該點：用嚟控制 Buddy 嘅用字同句式
+const LEVEL_GUIDE = {
+  A1: "very short, very simple sentences; only the most common everyday words; present tense mostly",
+  A2: "short simple sentences; common everyday words; simple past and future; no idioms",
+  "A2+": "simple sentences with some linking words (because, so, but); everyday vocabulary; a few very common phrasal verbs",
+  B1: "clear everyday English; common phrasal verbs; simple opinions and reasons; avoid rare idioms",
+  "B1+": "natural everyday English with a wider vocabulary; some conditionals; occasionally a common idiom",
+  B2: "natural conversational pace; varied sentence structures; common idioms and phrasal verbs; can discuss abstract ideas",
+  "B2+": "fluent, natural English with some less common vocabulary and idioms; nuanced opinions",
+  C1: "fluent, idiomatic, nuanced English as between native speakers, but still clear",
+  C2: "fully natural native-speaker English, including idioms and subtle humour",
+};
+const guide = (band) => LEVEL_GUIDE[band] || LEVEL_GUIDE.B1;
+const BAND_LIST = Object.keys(LEVEL_GUIDE).join(", ");
+
 const facts = (profile) => profile.slice(-30).map((f) => `- ${f}`).join("\n") || "- (nothing yet)";
 
 // 冇路線時（出題失敗）用的通用角度
@@ -11,7 +26,8 @@ export const DEFAULT_ANGLES = [
 ];
 
 // plan：{ angles: [傾偈路線], step: 而家行到第幾步 }
-export function chatSystemPrompt(profile, topic, wrapUp, plan) {
+// band：Buddy 講嘢用嘅 CEFR 程度（比使用者高少少）
+export function chatSystemPrompt(profile, topic, wrapUp, plan, band = "B1") {
   const angles = plan?.angles?.length ? plan.angles : DEFAULT_ANGLES;
   const step = Math.min(plan?.step || 0, angles.length - 1);
   let prompt = `You are "Buddy", a warm, encouraging English-speaking friend chatting with a Cantonese speaker from Hong Kong who is practising spoken English on their phone.
@@ -28,7 +44,7 @@ ${facts(profile)}
 Rules:
 - Talk like a friendly native-speaker friend: casual and relaxed, not like a teacher.
 - Keep each reply short: 1-3 sentences, then ask ONE open question to keep them talking.
-- Use clear, everyday English (around CEFR B1); avoid rare idioms.
+- Speak at CEFR ${band} level: ${guide(band)}. This is one step above the learner's current level on purpose, to stretch them a little. If they seem lost, rephrase more simply.
 - Never point out mistakes or explain grammar during the chat. Instead, when they make a mistake, naturally echo the correct version inside your reply, the way a friendly native speaker would (a "recast"). Example:
   Learner: "Yesterday I go to Mong Kok and buy many thing."
   You: "Oh, you went to Mong Kok yesterday? What did you buy?"
@@ -107,7 +123,8 @@ Return ONLY JSON, one of:
 }
 
 // gaps：傾偈時撳「🆘 講唔出」記低嘅 { zh: 想講嘅嘢（多數係中文）, context: Buddy 上一句 }
-export function summaryPrompt(transcript, gaps = []) {
+// band：教新句子用嘅程度（比使用者高少少）
+export function summaryPrompt(transcript, gaps = [], band = "B1") {
   const stuck = gaps.length
     ? gaps.map((g, i) => `${i + 1}. Buddy had just said: "${g.context}" / Learner wanted to say: "${g.zh}"`).join("\n")
     : "(none)";
@@ -126,20 +143,24 @@ Return ONLY JSON:
  "corrections": [{"original": "learner's sentence", "better": "more natural version", "explain": "short reason in Traditional Chinese"}],
  "pronunciation": [{"word": "English word", "tip": "short tip in Traditional Chinese", "example": "a short natural sentence using the word, ideally the one they said"}],
  "phrases": [{"en": "useful natural phrase for today's topic", "zh": "meaning in Traditional Chinese"}],
- "new_facts": ["short English fact the learner revealed about themselves"]
+ "new_facts": ["short English fact the learner revealed about themselves"],
+ "cefr": "<the learner's SPEAKING level shown in this chat, one of: ${BAND_LIST}>",
+ "cefr_reason": "<max 40 characters in Traditional Chinese (Hong Kong): the main evidence for this level>",
+ "next_step": "<max 40 characters in Traditional Chinese (Hong Kong): the one thing to work on to reach the next level>"
 }
 
 Rules:
+- cefr: judge only the Learner's lines using the CEFR spoken interaction and production descriptors (range of vocabulary and grammar, accuracy, fluency, coherence, ability to explain and give reasons). Ignore obvious speech-recognition glitches. Be fair and realistic, not generous. A "+" means clearly above that level but not yet the next one.
 - gaps: one item for each stuck moment above, in the same order. Keep "en" short and spoken (max 15 words). [] if none.
 - corrections: max 3, the most useful ones only; skip trivial ones. [] if none.
 - pronunciation: max 3. Include a word only if the transcript suggests a likely mispronunciation (an odd, out-of-context word that sounds like what they probably meant), or it is a word they used with a common pitfall for Cantonese speakers (th, final consonants, v/w, l/n, r/l). [] if nothing.
-- phrases: exactly 3, short and practical, at the learner's level.
+- phrases: exactly 3, short and practical, at CEFR ${band} (slightly above the learner's level, so they learn something new).
 - new_facts: personal info such as job, hobbies, plans, family, likes. [] if none.`;
 }
 
 // 🎧 聽寫：出 5 句真人日常會講、又有聽力難點嘅句子
-export function dictationPrompt(topic) {
-  return `Write 5 sentences for an English listening dictation exercise for a Cantonese speaker from Hong Kong (around CEFR B1).
+export function dictationPrompt(topic, band = "B1") {
+  return `Write 5 sentences for an English listening dictation exercise for a Cantonese speaker from Hong Kong, at CEFR ${band} level (${guide(band)}).
 
 Theme: ${topic || "mixed everyday situations (work, travel, shopping, plans, feelings, small talk)"}
 
