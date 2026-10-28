@@ -1,0 +1,13 @@
+{
+  "name": "我的字",
+  "short_name": "我的字",
+  "description": "認得你手寫字嘅 app",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f5f8f7",
+  "theme_color": "#0f766e",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

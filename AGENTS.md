@@ -11,6 +11,10 @@ English Buddy：個人用英文陪練，純靜態網頁（HTML/CSS/JavaScript，
   - 朗讀兩種引擎（`settings.ttsEngine`）：`browser`（`speechSynthesis`）或 `orpheus`（`canopylabs/orpheus-v1-english`，每次最多 200 字元，要拆段；冇速度參數，用 `playbackRate`；失敗自動轉瀏覽器聲音）
 - `js/store.js`：紀錄、記憶、連續打卡、徽章、設定，全部存 `localStorage`
 - `js/prompts.js`：所有提示詞；`js/shadowing.js`：跟讀比對（LCS）
+- `handwriting/`：獨立 app「我的字」（手寫字辨識），同 English Buddy 分開但同一個網址
+  - 睇圖 AI：Gemini（預設 `gemini-flash-latest`，404／403 時用 `/models` 揀最新 Flash）或 Groq 睇圖模型（每次最多 5 張圖）
+  - 「訓練」＝ 每次認字附上整頁範例（相＋正確文字）、認錯記錄（`diff.js` LCS 比較 AI 結果同使用者改正），精細模式再附「字樣參考表」做第二次校對
+  - 設定同認錯記錄存 `localStorage`；字樣同範例（圖片）存 IndexedDB
 - `.github/workflows/daily-reminder.yml`：每朝 07:30（香港時間）經 ntfy 推送提醒
 
 ## 規則

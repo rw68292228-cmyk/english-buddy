@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="zh-Hant-HK">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>我的字</title>
+  <meta name="description" content="認得你手寫字嘅 app：教佢認你啲字，影相就變文字">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="我的字">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="js/app.js"></script>
+</head>
+<body>
+  <h1 class="brand"><img src="icon.svg" class="logo" alt="" width="36" height="36">我的字</h1>
+
+  <nav class="tabs">
+    <button type="button" data-tab="read" class="active">📷 認字</button>
+    <button type="button" data-tab="teach">✍️ 教字</button>
+    <button type="button" data-tab="library">📚 字庫</button>
+    <button type="button" data-tab="settings">⚙️ 設定</button>
+  </nav>
+
+  <!-- ===== 認字 ===== -->
+  <section id="tab-read" class="tab">
+    <div id="need-key" class="card warn" hidden>
+      未設定 API key，請先去 <a href="#" data-goto="settings">⚙️ 設定</a>。
+    </div>
+
+    <div class="card">
+      <div class="row">
+        <label class="btn primary">📷 影相<input type="file" id="read-camera" accept="image/*" capture="environment" hidden></label>
+        <label class="btn">🖼️ 揀相<input type="file" id="read-file" accept="image/*" hidden></label>
+      </div>
+      <div id="read-preview" hidden>
+        <div class="photo"><canvas id="read-canvas"></canvas></div>
+        <div class="row">
+          <button type="button" class="btn small" id="read-rotate">↻ 轉 90°</button>
+          <button type="button" class="btn small primary" id="read-go">🔍 認字</button>
+        </div>
+      </div>
+      <p class="hint" id="read-status"></p>
+    </div>
+
+    <div id="read-result" class="card" hidden>
+      <h3>認到嘅文字</h3>
+      <div id="read-marked" class="marked"></div>
+      <p class="hint">黃色＝AI 唔肯定。喺下面改好佢，再撳「改好，儲存學習」，下次就會認得準啲。</p>
+      <textarea id="read-text" rows="10"></textarea>
+      <label class="toggle"><input type="checkbox" id="read-keep" checked> 將呢張相同改好嘅文字存做訓練範例</label>
+      <div class="row">
+        <button type="button" class="btn small" id="read-copy">📋 複製</button>
+        <button type="button" class="btn small primary" id="read-learn">✅ 改好，儲存學習</button>
+      </div>
+      <div id="read-learned" class="test-result"></div>
+    </div>
+  </section>
+
+  <!-- ===== 教字 ===== -->
+  <section id="tab-teach" class="tab" hidden>
+    <div class="card">
+      <h3>教單字</h3>
+      <p class="hint">輸入一個字（或者一個英文字母、一個詞），然後喺手寫板寫，或者影相再框出嚟。同一個字教 2–3 次最好。</p>
+      <div id="todo-box" hidden>
+        <p class="hint">最近認錯咗、建議教嘅字：</p>
+        <div class="chips" id="todo"></div>
+      </div>
+      <input id="glyph-label" maxlength="12" placeholder="例如：開、a、the" autocomplete="off">
+      <div class="chips">
+        <button type="button" class="chip active" data-mode="pad">✍️ 手寫板</button>
+        <button type="button" class="chip" data-mode="photo">📷 由相框選</button>
+      </div>
+
+      <div id="mode-pad">
+        <canvas id="pad" class="pad" width="560" height="560"></canvas>
+        <div class="row">
+          <button type="button" class="btn small" id="pad-clear">🧽 清除</button>
+          <button type="button" class="btn small primary" id="pad-save">💾 儲存字樣</button>
+        </div>
+        <p class="hint">提示：手指寫同用筆寫喺紙上會有啲唔同，想最準就用「由相框選」，影你喺紙上寫嘅字。</p>
+      </div>
+
+      <div id="mode-photo" hidden>
+        <div class="row">
+          <label class="btn small">📷 影相<input type="file" id="crop-camera" accept="image/*" capture="environment" hidden></label>
+          <label class="btn small">🖼️ 揀相<input type="file" id="crop-file" accept="image/*" hidden></label>
+        </div>
+        <div id="crop-area" hidden>
+          <p class="hint">用手指喺相上拖一個框，框住一個字，輸入係咩字，撳儲存。可以一張相框好多個字。</p>
+          <div class="photo"><canvas id="crop-canvas" class="crop"></canvas></div>
+          <button type="button" class="btn small primary" id="crop-save">💾 儲存框住嘅字樣</button>
+        </div>
+      </div>
+      <div id="teach-recent" class="glyphs small"></div>
+    </div>
+
+    <div class="card">
+      <h3>整頁範例（最有效）</h3>
+      <p class="hint">喺紙上抄一段字（中英都得），影低，再打返正確文字。AI 每次認字都會參考呢啲範例，學你寫字嘅習慣。</p>
+      <div class="row">
+        <label class="btn small">📷 影相<input type="file" id="ex-camera" accept="image/*" capture="environment" hidden></label>
+        <label class="btn small">🖼️ 揀相<input type="file" id="ex-file" accept="image/*" hidden></label>
+      </div>
+      <div id="ex-area" hidden>
+        <div class="photo"><canvas id="ex-canvas"></canvas></div>
+        <button type="button" class="btn small" id="ex-rotate">↻ 轉 90°</button>
+        <textarea id="ex-text" rows="5" placeholder="一字不漏打返相入面寫咗啲咩（保留分行）"></textarea>
+        <button type="button" class="btn small primary" id="ex-save">💾 儲存範例</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 字庫 ===== -->
+  <section id="tab-library" class="tab" hidden>
+    <div class="card">
+      <h3>學習進度</h3>
+      <p id="lib-stats"></p>
+    </div>
+    <div class="card">
+      <h3>已教字樣</h3>
+      <p class="hint">撳一個字樣可以刪除。</p>
+      <div id="lib-glyphs" class="glyphs"></div>
+    </div>
+    <div class="card">
+      <h3>整頁範例</h3>
+      <div id="lib-examples"></div>
+    </div>
+    <div class="card">
+      <h3>認錯記錄</h3>
+      <p class="hint">「你寫嘅字 ← AI 曾經讀錯做」。每次認字都會提醒 AI。撳 ✕ 刪除。</p>
+      <ul id="lib-confusions" class="plain"></ul>
+    </div>
+    <div class="card">
+      <h3>備份</h3>
+      <p class="hint">所有資料只存喺呢部機嘅瀏覽器。換手機或者清瀏覽器資料之前，記得匯出備份。</p>
+      <div class="row">
+        <button type="button" class="btn small" id="export">⬇️ 匯出備份</button>
+        <label class="btn small">⬆️ 匯入備份<input type="file" id="import" accept="application/json,.json" hidden></label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 設定 ===== -->
+  <section id="tab-settings" class="tab" hidden>
+    <div class="card">
+      <h3>用邊個 AI 認字</h3>
+      <div class="chips">
+        <button type="button" class="chip" data-provider="gemini">Gemini（建議）</button>
+        <button type="button" class="chip" data-provider="groq">Groq</button>
+      </div>
+
+      <div id="gemini-box">
+        <p class="hint">
+          Gemini 認中文手寫最準，有免費額度。去 <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">Google AI Studio</a>
+          登入，撳 <b>Create API key</b>，抄低條 key 貼喺下面。
+        </p>
+        <input type="password" id="gemini-key" placeholder="Gemini API key" autocomplete="off">
+        <details>
+          <summary>進階：模型</summary>
+          <input id="gemini-model" placeholder="gemini-flash-latest" autocomplete="off">
+        </details>
+        <p class="hint">⚠️ 用免費額度嘅話，Google 可能會用你上載嘅相改進佢哋嘅模型。唔好影私隱嘢。</p>
+      </div>
+
+      <div id="groq-box" hidden>
+        <p class="hint">用 English Buddy 同一條 Groq key（如果有，會自動帶入）。Groq 嘅睇圖模型認中文手寫冇 Gemini 咁準，而且每次最多 5 張圖。</p>
+        <input type="password" id="groq-key" placeholder="Groq API key（gsk_ 開頭）" autocomplete="off">
+        <details>
+          <summary>進階：模型</summary>
+          <input id="groq-model" autocomplete="off">
+        </details>
+      </div>
+
+      <label class="toggle"><input type="checkbox" id="two-pass"> 精細模式：認完再用你教過嘅字樣對一次（慢啲、用多一次額度，但準啲）</label>
+      <div class="row">
+        <button type="button" class="btn small primary" id="save-settings">💾 儲存</button>
+        <button type="button" class="btn small" id="test-key">🧪 測試</button>
+      </div>
+      <div id="test-result" class="test-result"></div>
+    </div>
+    <div class="card">
+      <p class="hint">🔒 API key、字樣、範例全部只存喺你部機。認字時，相片會直接由你部機傳去你揀嘅 AI 服務。</p>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden></div>
+</body>
+</html>
